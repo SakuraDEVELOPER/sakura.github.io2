@@ -276,6 +276,7 @@ function FeatureShowcase() {
   const [isPreviewDragging, setIsPreviewDragging] = useState(false);
   const [isCarouselDragging, setIsCarouselDragging] = useState(false);
   const previewViewportRef = useRef<HTMLDivElement | null>(null);
+  const previewImageRef = useRef<HTMLImageElement | null>(null);
   const previewZoomTargetRef = useRef<{ xRatio: number; yRatio: number } | null>(null);
   const previewDragRef = useRef<{
     startX: number;
@@ -395,7 +396,9 @@ function FeatureShowcase() {
     }
 
     if (!isPreviewZoomed && event && previewViewportRef.current) {
-      const rect = previewViewportRef.current.getBoundingClientRect();
+      const rect =
+        previewImageRef.current?.getBoundingClientRect() ??
+        previewViewportRef.current.getBoundingClientRect();
 
       previewZoomTargetRef.current = {
         xRatio: Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width)),
@@ -672,7 +675,7 @@ function FeatureShowcase() {
               <div
                 role="button"
                 tabIndex={0}
-                onClick={togglePreviewZoom}
+                onClick={(event) => togglePreviewZoom(event)}
                 onDragStart={(event) => event.preventDefault()}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
@@ -695,15 +698,16 @@ function FeatureShowcase() {
                 style={{ touchAction: isPreviewZoomed ? "none" : "auto" }}
               >
                 <div
-                  className={`relative mx-auto aspect-[16/9] transition-[width] duration-300 ${
+                  className={`mx-auto transition-[width] duration-300 ${
                     isPreviewZoomed ? "w-[165%]" : "w-full"
                   } ${isPreviewZoomed ? "cursor-inherit" : "cursor-zoom-in"}`}
                 >
                   <img
+                    ref={previewImageRef}
                     src={previewSlide.mediaSrc}
                     alt={previewSlide.title}
                     draggable={false}
-                    className="pointer-events-none absolute inset-0 h-full w-full select-none object-contain"
+                    className="pointer-events-none block h-auto w-full select-none"
                   />
                 </div>
               </div>
