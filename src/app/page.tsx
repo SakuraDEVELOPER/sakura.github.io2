@@ -366,7 +366,11 @@ function FeatureShowcase() {
       return;
     }
 
-    const frameId = window.requestAnimationFrame(() => {
+    let frameId = 0;
+    let settleFrameId = 0;
+    let settleTimeoutId = 0;
+
+    const applyZoomScroll = () => {
       const maxScrollLeft = Math.max(0, viewport.scrollWidth - viewport.clientWidth);
       const maxScrollTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
 
@@ -384,9 +388,19 @@ function FeatureShowcase() {
       }
 
       previewZoomTargetRef.current = null;
+    };
+
+    frameId = window.requestAnimationFrame(() => {
+      applyZoomScroll();
+      settleFrameId = window.requestAnimationFrame(applyZoomScroll);
+      settleTimeoutId = window.setTimeout(applyZoomScroll, 120);
     });
 
-    return () => window.cancelAnimationFrame(frameId);
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.cancelAnimationFrame(settleFrameId);
+      window.clearTimeout(settleTimeoutId);
+    };
   }, [isPreviewZoomed, previewSlide]);
 
   const togglePreviewZoom = (event?: { clientX: number; clientY: number }) => {
@@ -698,7 +712,7 @@ function FeatureShowcase() {
                 style={{ touchAction: isPreviewZoomed ? "none" : "auto" }}
               >
                 <div
-                  className={`mx-auto transition-[width] duration-300 ${
+                  className={`mx-auto ${
                     isPreviewZoomed ? "w-[165%]" : "w-full"
                   } ${isPreviewZoomed ? "cursor-inherit" : "cursor-zoom-in"}`}
                 >
