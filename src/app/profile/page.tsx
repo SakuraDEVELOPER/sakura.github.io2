@@ -264,13 +264,15 @@ const roleBadgeStyle = (role: string): CSSProperties => {
   };
 };
 const ROLE_MANAGER_NAMES = new Set(["root"]);
-const EDITABLE_ROLE_OPTIONS = [
-  "co-owner",
+const REMOVED_ROLE_NAMES = new Set([
   "super administrator",
   "administrator",
-  "moderator",
   "tester",
   "subscriber",
+]);
+const EDITABLE_ROLE_OPTIONS = [
+  "co-owner",
+  "moderator",
   "user",
   "root",
 ];
@@ -291,7 +293,8 @@ const sortRolesForDisplay = (roles: string[]) =>
 const normalizeRoleSelection = (roles: string[]) => {
   const nextRoles = roles
     .map((role) => normalizeRoleName(role))
-    .filter(Boolean);
+    .filter(Boolean)
+    .filter((role) => !REMOVED_ROLE_NAMES.has(role));
 
   const uniqueRoles = nextRoles.filter(
     (role, index, entries) => index === entries.findIndex((candidate) => candidate === role)
@@ -628,8 +631,7 @@ export default function ProfilePage() {
                 <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
                   {activeProfile.photoURL ? <img src={activeProfile.photoURL} alt={primaryName} className="h-24 w-24 rounded-[28px] border border-[#2c2023] object-cover shadow-[0_0_30px_rgba(255,183,197,0.14)]" /> : <div className="flex h-24 w-24 items-center justify-center rounded-[28px] border border-[#2c2023] bg-[#1a1012] text-2xl font-black uppercase text-[#ffb7c5] shadow-[0_0_30px_rgba(255,183,197,0.14)]">{initials}</div>}
                   <div className="min-w-0">
-                    <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-[#ffb7c5]">{isOwner ? "Account Overview" : "Public Profile"}</p>
-                    <h1 className="mt-3 truncate text-3xl font-black uppercase tracking-tighter text-white">{primaryName}</h1>
+                    <h1 className="truncate text-3xl font-black uppercase tracking-tighter text-white">{primaryName}</h1>
                     <div className="mt-3 flex flex-wrap items-center gap-3">
                       <span className={`inline-flex rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] ${activeProfile.presence?.isOnline ? "border-[#1f3b2f] bg-[#0d1713] text-[#8ce5b2]" : "border-[#312228] bg-[#140d11] text-[#ffb7c5]"}`}>{activeProfile.presence?.isOnline ? "Online" : "Offline"}</span>
                       {profileRoles.map((role) => <span key={role} title={roleBadgeLabel(role)} style={{ ...roleBadgeStyle(role), ...roleBadgeTextStyle }} className="inline-flex shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-[10px] font-bold"><span aria-hidden="true" className="inline-flex items-center">{renderRoleBadgeText(role)}</span></span>)}

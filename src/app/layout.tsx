@@ -271,12 +271,20 @@ const firebaseModuleScript = `
         : role.trim().replace(/\s+/g, " ")
       : "";
 
+  const REMOVED_ROLE_NAMES = new Set([
+    "super administrator",
+    "administrator",
+    "tester",
+    "subscriber",
+  ]);
+
   const normalizeRoles = (roles) => {
     const nextRoles = Array.isArray(roles)
       ? roles
         .filter((role) => typeof role === "string")
         .map(cleanRoleLabel)
         .filter(Boolean)
+        .filter((role) => !REMOVED_ROLE_NAMES.has(normalizeRoleName(role)))
       : [];
 
     return nextRoles.length
