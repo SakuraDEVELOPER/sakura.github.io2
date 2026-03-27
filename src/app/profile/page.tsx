@@ -75,8 +75,6 @@ const formatTime = (value: string | null) =>
   value
     ? new Intl.DateTimeFormat("ru-RU", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
     : "Not available";
-const formatProvider = (providerId: string) =>
-  providerId === "password" ? "Email / Password" : providerId === "google.com" ? "Google" : providerId;
 const normalizeRoleName = (role: string) => {
   const normalizedRole = role.trim().toLowerCase();
 
@@ -371,11 +369,8 @@ export default function ProfilePage() {
                 {[
                   ["Profile ID", String(activeProfile.profileId ?? "Not assigned")],
                   ["Login", activeProfile.login ? `@${activeProfile.login}` : "Not assigned"],
-                  ["Email", activeProfile.email ?? "Not provided"],
-                  ["User ID", activeProfile.uid],
                   ["Roles", profileRoles.map(formatRole).join(", ")],
                   ["Account Created", formatTime(activeProfile.creationTime)],
-                  ["Last Sign-In", formatTime(activeProfile.lastSignInTime)],
                 ].map(([label, value]) => <div key={label} className="rounded-[26px] border border-[#1d1d1d] bg-[#090909] p-5"><p className="font-mono text-[10px] uppercase tracking-[0.32em] text-gray-600">{label}</p><p className="mt-3 break-all text-sm leading-relaxed text-gray-300">{value}</p></div>)}
               </div>
             </div>
@@ -397,10 +392,6 @@ export default function ProfilePage() {
                 </div>
               </div>
 
-              <div className="rounded-[32px] border border-[#201517] bg-[#0d0d0d] px-7 py-7 shadow-[0_0_60px_rgba(255,183,197,0.06)]">
-                <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-[#ffb7c5]">Providers</p>
-                <div className="mt-5 flex flex-wrap gap-3">{(activeProfile.providerIds.length ? activeProfile.providerIds : ["Firebase Auth"]).map((provider) => <span key={provider} className="inline-flex rounded-full border border-[#2b1b1e] bg-[#1a1012] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-[#ffb7c5]">{formatProvider(provider)}</span>)}</div>
-              </div>
             </div>
           </section>
         ) : null}
