@@ -75,7 +75,7 @@ const AUTH_READY_EVENT = "sakura-auth-ready";
 const AUTH_ERROR_EVENT = "sakura-auth-error";
 const USER_UPDATE_EVENT = "sakura-user-update";
 const PROFILE_PATH_STORAGE_KEY = "sakura-profile-path";
-const repoBasePath = process.env.NEXT_PUBLIC_REPO_BASE_PATH ?? "";
+const repoBasePath = "/sakura.github.io";
 
 function formatProvider(providerId: string) {
   switch (providerId) {
