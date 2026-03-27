@@ -204,15 +204,29 @@ const roleBadgeStyle = (role: string): CSSProperties => {
 };
 const ROLE_MANAGER_NAMES = new Set(["root"]);
 const EDITABLE_ROLE_OPTIONS = [
-  "root",
-  "super administrator",
   "co-owner",
+  "super administrator",
   "administrator",
   "moderator",
   "tester",
   "subscriber",
   "user",
+  "root",
 ];
+const ROLE_DISPLAY_ORDER = new Map(
+  EDITABLE_ROLE_OPTIONS.map((role, index) => [normalizeRoleName(role), index])
+);
+const sortRolesForDisplay = (roles: string[]) =>
+  [...roles].sort((left, right) => {
+    const leftOrder = ROLE_DISPLAY_ORDER.get(normalizeRoleName(left)) ?? Number.MAX_SAFE_INTEGER;
+    const rightOrder = ROLE_DISPLAY_ORDER.get(normalizeRoleName(right)) ?? Number.MAX_SAFE_INTEGER;
+
+    if (leftOrder !== rightOrder) {
+      return leftOrder - rightOrder;
+    }
+
+    return formatRole(left).localeCompare(formatRole(right), "en");
+  });
 const normalizeRoleSelection = (roles: string[]) => {
   const nextRoles = roles
     .map((role) => normalizeRoleName(role))
@@ -222,7 +236,7 @@ const normalizeRoleSelection = (roles: string[]) => {
     (role, index, entries) => index === entries.findIndex((candidate) => candidate === role)
   );
 
-  return uniqueRoles.length ? uniqueRoles : ["user"];
+  return uniqueRoles.length ? sortRolesForDisplay(uniqueRoles) : ["user"];
 };
 const canManageRoles = (roles: string[]) =>
   normalizeRoleSelection(roles).some((role) => ROLE_MANAGER_NAMES.has(normalizeRoleName(role)));
@@ -370,8 +384,8 @@ export default function ProfilePage() {
   const visibleCurrentUser = currentUser && !currentUser.isAnonymous ? currentUser : null;
   const isOwner = Boolean(visibleCurrentUser && profile && visibleCurrentUser.uid === profile.uid);
   const activeProfile = profile;
-  const profileRoles = activeProfile?.roles?.length ? activeProfile.roles : ["user"];
-  const normalizedProfileRoles = normalizeRoleSelection(profileRoles);
+  const profileRoles = activeProfile?.roles?.length ? normalizeRoleSelection(activeProfile.roles) : ["user"];
+  const normalizedProfileRoles = profileRoles;
   const canManageRoleAssignments = Boolean(visibleCurrentUser && canManageRoles(visibleCurrentUser.roles));
   const shouldShowPendingState =
     !authError &&
