@@ -201,9 +201,11 @@ const roleBadgeStyle = (role: string): CSSProperties => {
     boxShadow: "0 0 18px rgba(34,197,94,0.22)",
   };
 };
-const nameOf = (user: UserProfile) => user.displayName?.trim() || user.login?.trim() || "Sakura User";
+const nameOf = (user: UserProfile) =>
+  user.displayName?.trim() ||
+  (typeof user.profileId === "number" ? `Profile #${user.profileId}` : "Sakura User");
 const initialsOf = (user: UserProfile) =>
-  (user.displayName || user.login || user.email || "SA")
+  (user.displayName || user.email || (typeof user.profileId === "number" ? `Profile ${user.profileId}` : "SA"))
     .split(/[\s@._-]+/)
     .filter(Boolean)
     .slice(0, 2)
@@ -441,7 +443,6 @@ export default function ProfilePage() {
                     <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-[#ffb7c5]">{isOwner ? "Account Overview" : "Public Profile"}</p>
                     <h1 className="mt-3 truncate text-3xl font-black uppercase tracking-tighter text-white">{primaryName}</h1>
                     <div className="mt-3 flex flex-wrap items-center gap-3">
-                      <span className="inline-flex rounded-full border border-[#2b1b1e] bg-[#1a1012] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-[#ffb7c5]">{activeProfile.login ? `@${activeProfile.login}` : "login pending"}</span>
                       <span className={`inline-flex rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] ${activeProfile.presence?.isOnline ? "border-[#1f3b2f] bg-[#0d1713] text-[#8ce5b2]" : "border-[#312228] bg-[#140d11] text-[#ffb7c5]"}`}>{activeProfile.presence?.isOnline ? "Online" : "Offline"}</span>
                       {profileRoles.map((role) => <span key={role} style={{ ...roleBadgeStyle(role), ...roleBadgeTextStyle }} className="inline-flex rounded-full border px-3 py-1 text-[10px] font-bold">{roleBadgeLabel(role)}</span>)}
                     </div>
@@ -451,7 +452,6 @@ export default function ProfilePage() {
               <div className="grid gap-4 px-8 py-8 sm:grid-cols-2">
                 {[
                   ["Profile ID", String(activeProfile.profileId ?? "Not assigned")],
-                  ["Login", activeProfile.login ? `@${activeProfile.login}` : "Not assigned"],
                   ["Roles", profileRoles.map(formatRole).join(", ")],
                   ["Account Created", formatTime(activeProfile.creationTime)],
                 ].map(([label, value]) => <div key={label} className="rounded-[26px] border border-[#1d1d1d] bg-[#090909] p-5"><p className="font-mono text-[10px] uppercase tracking-[0.32em] text-gray-600">{label}</p><p className="mt-3 break-all text-sm leading-relaxed text-gray-300">{value}</p></div>)}
