@@ -89,6 +89,10 @@ const normalizeRoleName = (role: string) => {
     return "super administrator";
   }
 
+  if (compactRole === "coowner") {
+    return "co-owner";
+  }
+
   if (
     compactRole === "root" ||
     compactRole === "r00t" ||
@@ -115,27 +119,18 @@ const normalizeRoleName = (role: string) => {
 
   return normalizedRole;
 };
+const cleanRoleLabel = (role: string) => role.trim().replace(/\s+/g, " ");
 const formatRole = (role: string) => {
-  const normalizedRole = normalizeRoleName(role);
-
-  if (normalizedRole === "root") return "Root";
-  if (normalizedRole === "super administrator") return "Super Administrator";
-  if (normalizedRole === "administrator") return "Administrator";
-  if (normalizedRole === "moderator") return "Moderator";
-  if (normalizedRole === "tester") return "Tester";
-  if (normalizedRole === "subscriber") return "Subscriber";
-  if (normalizedRole === "user") return "User";
-
-  return normalizedRole
-    .split(/[\s_-]+/)
-    .filter(Boolean)
-    .map((part) => part[0]?.toUpperCase() + part.slice(1))
-    .join(" ");
+  return cleanRoleLabel(role) || "user";
 };
 const roleBadgeStyle = (role: string): CSSProperties => {
   const normalizedRole = normalizeRoleName(role);
 
-  if (normalizedRole === "root" || normalizedRole === "super administrator") {
+  if (
+    normalizedRole === "root" ||
+    normalizedRole === "super administrator" ||
+    normalizedRole === "co-owner"
+  ) {
     return {
       borderColor: "#ff3b30",
       backgroundColor: "#220909",

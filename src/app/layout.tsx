@@ -222,6 +222,10 @@ const firebaseModuleScript = `
       return "super administrator";
     }
 
+    if (compactRole === "coowner") {
+      return "co-owner";
+    }
+
     if (
       compactRole === "root" ||
       compactRole === "r00t" ||
@@ -249,15 +253,26 @@ const firebaseModuleScript = `
     return normalizedRole;
   };
 
+  const cleanRoleLabel = (role) =>
+    typeof role === "string" ? role.trim().replace(/\s+/g, " ") : "";
+
   const normalizeRoles = (roles) => {
     const nextRoles = Array.isArray(roles)
       ? roles
         .filter((role) => typeof role === "string")
-        .map(normalizeRoleName)
+        .map(cleanRoleLabel)
         .filter(Boolean)
       : [];
 
-    return nextRoles.length ? [...new Set(nextRoles)] : ["user"];
+    return nextRoles.length
+      ? nextRoles.filter(
+        (role, index, entries) =>
+          index ===
+          entries.findIndex(
+            (candidate) => normalizeRoleName(candidate) === normalizeRoleName(role)
+          )
+      )
+      : ["user"];
   };
 
   const buildLoginHistory = (existingHistory, creationTime, lastSignInTime) => {
