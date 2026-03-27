@@ -205,6 +205,9 @@ const firebaseModuleScript = `
   const getProviderIds = (user) =>
     user.providerData.map((providerData) => providerData?.providerId).filter(Boolean);
 
+  const isUserLikeRole = (role) =>
+    typeof role === "string" && /^u(?:[\s_-]*s)?[\s_-]*e[\s_-]*r$/i.test(role.trim());
+
   const normalizeRoleName = (role) => {
     const normalizedRole =
       typeof role === "string" ? role.trim().toLowerCase().replace(/\s+/g, " ") : "";
@@ -212,6 +215,10 @@ const firebaseModuleScript = `
 
     if (!normalizedRole) {
       return "";
+    }
+
+    if (isUserLikeRole(role)) {
+      return "user";
     }
 
     if (/^co[\s_-]*owner$/i.test(role.trim())) {
@@ -258,7 +265,11 @@ const firebaseModuleScript = `
   };
 
   const cleanRoleLabel = (role) =>
-    typeof role === "string" ? role.trim().replace(/\s+/g, " ") : "";
+    typeof role === "string"
+      ? isUserLikeRole(role)
+        ? "user"
+        : role.trim().replace(/\s+/g, " ")
+      : "";
 
   const normalizeRoles = (roles) => {
     const nextRoles = Array.isArray(roles)

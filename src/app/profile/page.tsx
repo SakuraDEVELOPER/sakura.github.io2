@@ -41,7 +41,7 @@ const AUTH_ERROR_EVENT = "sakura-auth-error";
 const USER_UPDATE_EVENT = "sakura-user-update";
 const PROFILE_PATH_STORAGE_KEY = "sakura-profile-path";
 const CURRENT_PROFILE_ID_STORAGE_KEY = "sakura-current-profile-id";
-const PROFILE_BUILD_MARKER = "role-colors-v5";
+const PROFILE_BUILD_MARKER = "role-colors-v6";
 const repoBasePath = "/sakura.github.io";
 const restoreProfilePathScript = `
   (function () {
@@ -77,9 +77,14 @@ const formatTime = (value: string | null) =>
   value
     ? new Intl.DateTimeFormat("ru-RU", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
     : "Not available";
+const isUserLikeRole = (role: string) => /^u(?:[\s_-]*s)?[\s_-]*e[\s_-]*r$/i.test(role.trim());
 const normalizeRoleName = (role: string) => {
   const normalizedRole = role.trim().toLowerCase().replace(/\s+/g, " ");
   const compactRole = normalizedRole.replace(/[\s_-]+/g, "");
+
+  if (isUserLikeRole(role)) {
+    return "user";
+  }
 
   if (/^co[\s_-]*owner$/i.test(role.trim())) {
     return "co-owner";
@@ -123,7 +128,8 @@ const normalizeRoleName = (role: string) => {
 
   return normalizedRole;
 };
-const cleanRoleLabel = (role: string) => role.trim().replace(/\s+/g, " ");
+const cleanRoleLabel = (role: string) =>
+  isUserLikeRole(role) ? "user" : role.trim().replace(/\s+/g, " ");
 const formatRole = (role: string) => {
   return cleanRoleLabel(role) || "user";
 };
