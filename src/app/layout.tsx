@@ -39,6 +39,7 @@ const firebaseModuleScript = `
 
   const LOGIN_MAX_LENGTH = 24;
   const LOGIN_MIN_LENGTH = 3;
+  const LOGIN_PATTERN = /^[A-Za-zА-Яа-яЁё0-9._-]+$/;
 
   const createFirebaseError = (code, message) => {
     const error = new Error(message);
@@ -50,7 +51,7 @@ const firebaseModuleScript = `
     value
       .trim()
       .replace(/\s+/g, "")
-      .replace(/[^\p{L}\p{N}._-]/gu, "")
+      .replace(/[^A-Za-zА-Яа-яЁё0-9._-]/g, "")
       .slice(0, LOGIN_MAX_LENGTH);
 
   const normalizeLogin = (value) => sanitizeLogin(value).toLocaleLowerCase();
@@ -118,12 +119,22 @@ const firebaseModuleScript = `
     };
 
     const resolveAvailableLogin = async (requestedLogin, currentUid = null, automatic = false) => {
-      const baseLogin = sanitizeLogin(requestedLogin);
+      const normalizedRequestedLogin = String(requestedLogin ?? "")
+        .trim()
+        .replace(/\s+/g, "");
+      const baseLogin = sanitizeLogin(normalizedRequestedLogin);
 
-      if (!baseLogin || baseLogin.length < LOGIN_MIN_LENGTH) {
+      if (
+        !baseLogin ||
+        baseLogin.length < LOGIN_MIN_LENGTH ||
+        (!automatic &&
+          (normalizedRequestedLogin.length > LOGIN_MAX_LENGTH ||
+            !LOGIN_PATTERN.test(normalizedRequestedLogin) ||
+            baseLogin !== normalizedRequestedLogin))
+      ) {
         throw createFirebaseError(
           "auth/invalid-login",
-          "Login must contain at least 3 characters."
+          "Login must be 3-24 characters and only contain letters, numbers, dots, underscores, or hyphens."
         );
       }
 

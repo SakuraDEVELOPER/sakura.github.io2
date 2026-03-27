@@ -114,6 +114,7 @@ declare global {
 
 const AUTH_READY_EVENT = "sakura-auth-ready";
 const AUTH_ERROR_EVENT = "sakura-auth-error";
+const LOGIN_PATTERN = /^[A-Za-zА-Яа-яЁё0-9._-]+$/;
 
 function getFirebaseErrorMessage(error: unknown) {
   const code =
@@ -454,7 +455,11 @@ function HeaderAuth() {
         return;
       }
 
-      if (normalizedLogin.length < 3 || !/^[\p{L}\p{N}._-]+$/u.test(normalizedLogin)) {
+      if (
+        normalizedLogin.length < 3 ||
+        normalizedLogin.length > 24 ||
+        !LOGIN_PATTERN.test(normalizedLogin)
+      ) {
         setSubmitError(getFirebaseErrorMessage({ code: "auth/invalid-login" }));
         return;
       }
@@ -715,6 +720,8 @@ function HeaderAuth() {
                     <input
                       type="text"
                       value={loginName}
+                      minLength={3}
+                      maxLength={24}
                       autoComplete="username"
                       onChange={(event) => setLoginName(event.target.value)}
                       className="w-full rounded-2xl border border-[#232323] bg-[#090909] px-4 py-3 text-sm text-white outline-none transition placeholder:text-gray-600 focus:border-[#ffb7c5]/55"
