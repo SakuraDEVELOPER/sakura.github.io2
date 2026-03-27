@@ -65,6 +65,73 @@ const showcaseSlides: ShowcaseSlide[] = [
   },
 ];
 
+type FirebaseClientConfig = {
+  apiKey: string;
+  authDomain: string;
+  projectId: string;
+  storageBucket: string;
+  messagingSenderId: string;
+  appId: string;
+  measurementId: string;
+};
+
+type AuthMode = "login" | "register";
+
+type AuthUserSnapshot = {
+  uid: string;
+  email: string | null;
+};
+
+type FirebaseAuthBridge = {
+  login: (email: string, password: string) => Promise<AuthUserSnapshot | null>;
+  register: (email: string, password: string) => Promise<AuthUserSnapshot | null>;
+  logout: () => Promise<void>;
+  onAuthStateChanged: (callback: (user: AuthUserSnapshot | null) => void) => () => void;
+};
+
+declare global {
+  interface Window {
+    firebaseConfig?: FirebaseClientConfig;
+    sakuraFirebaseAuth?: FirebaseAuthBridge;
+    sakuraFirebaseAuthError?: string;
+  }
+}
+
+const AUTH_READY_EVENT = "sakura-auth-ready";
+const AUTH_ERROR_EVENT = "sakura-auth-error";
+
+function getFirebaseErrorMessage(error: unknown) {
+  const code =
+    typeof error === "object" && error !== null && "code" in error
+      ? String((error as { code?: unknown }).code)
+      : "";
+
+  switch (code) {
+    case "auth/email-already-in-use":
+      return "Этот email уже зарегистрирован.";
+    case "auth/invalid-email":
+      return "Введите корректный email.";
+    case "auth/weak-password":
+      return "Пароль должен содержать минимум 6 символов.";
+    case "auth/user-not-found":
+    case "auth/wrong-password":
+    case "auth/invalid-credential":
+      return "Неверный email или пароль.";
+    case "auth/too-many-requests":
+      return "Слишком много попыток. Попробуйте немного позже.";
+    case "auth/network-request-failed":
+      return "Не удалось подключиться к Firebase. Проверьте интернет.";
+    case "auth/operation-not-allowed":
+      return "Email/password вход не включен в настройках Firebase Auth.";
+    default:
+      if (error instanceof Error && error.message) {
+        return error.message;
+      }
+
+      return "Не удалось выполнить запрос к Firebase Auth. Попробуйте еще раз.";
+  }
+}
+
 function scrollToSection(sectionId: string) {
   const target = document.getElementById(sectionId);
 
@@ -149,13 +216,400 @@ function SakuraBackground() {
   );
 }
 
+function HeaderAuth() {
+  const [mode, setMode] = useState<AuthMode>("login");
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
+  const [authLoadError, setAuthLoadError] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<AuthUserSnapshot | null>(null);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [flashMessage, setFlashMessage] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    let unsubscribe: () => void = () => {};
+
+    const syncAuthBridge = () => {
+      if (window.sakuraFirebaseAuth) {
+        setAuthReady(true);
+        setAuthLoadError(null);
+        unsubscribe();
+        unsubscribe = window.sakuraFirebaseAuth.onAuthStateChanged((user) => {
+          setCurrentUser(user);
+        });
+        return;
+      }
+
+      if (window.sakuraFirebaseAuthError) {
+        setAuthLoadError(window.sakuraFirebaseAuthError);
+      }
+    };
+
+    const handleReady = () => {
+      syncAuthBridge();
+    };
+
+    const handleError = () => {
+      setAuthLoadError(
+        window.sakuraFirebaseAuthError ??
+          "Firebase Auth module did not load. Проверьте соединение и настройки Firebase."
+      );
+    };
+
+    const timeoutId = window.setTimeout(() => {
+      if (!window.sakuraFirebaseAuth && !window.sakuraFirebaseAuthError) {
+        setAuthLoadError(
+          "Firebase Auth module did not load. Проверьте соединение и настройки Firebase."
+        );
+      }
+    }, 4000);
+
+    syncAuthBridge();
+    window.addEventListener(AUTH_READY_EVENT, handleReady);
+    window.addEventListener(AUTH_ERROR_EVENT, handleError);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      window.removeEventListener(AUTH_READY_EVENT, handleReady);
+      window.removeEventListener(AUTH_ERROR_EVENT, handleError);
+      unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isModalOpen) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+
+    document.body.style.overflow = "hidden";
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsModalOpen(false);
+        setSubmitError(null);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isModalOpen]);
+
+  useEffect(() => {
+    if (!flashMessage) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setFlashMessage(null);
+    }, 3500);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [flashMessage]);
+
+  const openModal = (nextMode: AuthMode) => {
+    setMode(nextMode);
+    setIsModalOpen(true);
+    setSubmitError(null);
+  };
+
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setSubmitError(null);
+    setPassword("");
+    setConfirmPassword("");
+  };
+
+  const switchMode = (nextMode: AuthMode) => {
+    setMode(nextMode);
+    setSubmitError(null);
+    setPassword("");
+    setConfirmPassword("");
+  };
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!window.sakuraFirebaseAuth) {
+      setSubmitError(
+        authLoadError ?? "Firebase Auth еще не готов. Подождите пару секунд и попробуйте снова."
+      );
+      return;
+    }
+
+    if (!email.trim()) {
+      setSubmitError("Введите email.");
+      return;
+    }
+
+    if (!password) {
+      setSubmitError("Введите пароль.");
+      return;
+    }
+
+    if (mode === "register" && password !== confirmPassword) {
+      setSubmitError("Пароли не совпадают.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setSubmitError(null);
+
+    try {
+      if (mode === "register") {
+        await window.sakuraFirebaseAuth.register(email.trim(), password);
+        setFlashMessage("Аккаунт создан. Вход выполнен автоматически.");
+      } else {
+        await window.sakuraFirebaseAuth.login(email.trim(), password);
+        setFlashMessage("Вход выполнен.");
+      }
+
+      closeModal();
+    } catch (error) {
+      setSubmitError(getFirebaseErrorMessage(error));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    if (!window.sakuraFirebaseAuth) {
+      setFlashMessage(
+        authLoadError ?? "Firebase Auth еще не готов. Подождите пару секунд и попробуйте снова."
+      );
+      return;
+    }
+
+    setIsLoggingOut(true);
+
+    try {
+      await window.sakuraFirebaseAuth.logout();
+      setFlashMessage("Вы вышли из аккаунта.");
+    } catch (error) {
+      setFlashMessage(getFirebaseErrorMessage(error));
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
+
+  return (
+    <>
+      {currentUser ? (
+        <>
+          <div className="hidden items-center gap-2 rounded-full border border-[#1f3b2f] bg-[#0d1713] px-4 py-2 sm:flex">
+            <span className="h-2 w-2 rounded-full bg-[#8ce5b2] shadow-[0_0_12px_rgba(140,229,178,0.55)]"></span>
+            <span className="max-w-[210px] truncate text-[11px] text-[#cfe9dc]">
+              {currentUser.email ?? "Signed in"}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={handleLogout}
+            disabled={isLoggingOut}
+            className="inline-flex items-center justify-center rounded-full border border-[#2b1b1e] bg-[#130d0f] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-[#ffb7c5] transition hover:border-[#ffb7c5]/50 hover:bg-[#1a1012] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isLoggingOut ? "Logging out..." : "Logout"}
+          </button>
+        </>
+      ) : (
+        <>
+          <button
+            type="button"
+            onClick={() => openModal("login")}
+            className="inline-flex items-center justify-center rounded-full border border-[#2a2a2a] bg-[#101010] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-gray-300 transition hover:border-[#4a4a4a] hover:text-white"
+          >
+            Login
+          </button>
+          <button
+            type="button"
+            onClick={() => openModal("register")}
+            className="inline-flex items-center justify-center rounded-full border border-[#ffb7c5]/30 bg-[#ffb7c5] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-black shadow-[0_0_25px_rgba(255,183,197,0.14)] transition hover:bg-[#ffc8d3]"
+          >
+            Registration
+          </button>
+        </>
+      )}
+
+      {flashMessage ? (
+        <p className="basis-full text-right font-mono text-[10px] uppercase tracking-[0.2em] text-[#ffb7c5]">
+          {flashMessage}
+        </p>
+      ) : null}
+
+      {authLoadError && !isModalOpen ? (
+        <p className="basis-full text-right text-[11px] text-red-200/80">{authLoadError}</p>
+      ) : null}
+
+      {isModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <button
+            type="button"
+            aria-label="Close auth modal"
+            onClick={closeModal}
+            className="absolute inset-0 bg-black/75 backdrop-blur-sm"
+          />
+
+          <motion.div
+            initial={{ opacity: 0, scale: 0.94, y: 18 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={{ duration: 0.22 }}
+            className="relative z-10 w-full max-w-md overflow-hidden rounded-[30px] border border-[#2b1b1e] bg-[#0d0d0d] shadow-[0_0_80px_rgba(255,183,197,0.08)]"
+          >
+            <div className="border-b border-[#1b1b1b] bg-[radial-gradient(circle_at_top,rgba(255,183,197,0.12),transparent_58%)] p-6">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.4em] text-[#ffb7c5]">
+                    Sakura Access
+                  </p>
+                  <h2 className="text-2xl font-black uppercase tracking-tighter text-white">
+                    {mode === "register" ? "Registration" : "Login"}
+                  </h2>
+                  <p className="mt-2 text-sm text-gray-400">
+                    Авторизация через Firebase Email/Password.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#272727] bg-[#101010] text-lg text-gray-400 transition hover:border-[#ffb7c5]/40 hover:text-white"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6">
+              <div className="grid grid-cols-2 gap-2 rounded-full border border-[#1e1e1e] bg-[#080808] p-1">
+                <button
+                  type="button"
+                  onClick={() => switchMode("login")}
+                  className={`rounded-full px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition ${
+                    mode === "login" ? "bg-[#ffb7c5] text-black" : "text-gray-400 hover:text-white"
+                  }`}
+                >
+                  Login
+                </button>
+                <button
+                  type="button"
+                  onClick={() => switchMode("register")}
+                  className={`rounded-full px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition ${
+                    mode === "register"
+                      ? "bg-[#ffb7c5] text-black"
+                      : "text-gray-400 hover:text-white"
+                  }`}
+                >
+                  Registration
+                </button>
+              </div>
+
+              {!authReady && !authLoadError ? (
+                <div className="mt-5 rounded-2xl border border-[#2b1b1e] bg-[#120d0f] px-4 py-3 text-sm text-[#f2c0cb]">
+                  Подключаем Firebase Auth...
+                </div>
+              ) : null}
+
+              {authLoadError ? (
+                <div className="mt-5 rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100/90">
+                  {authLoadError}
+                </div>
+              ) : null}
+
+              <form className="mt-5 space-y-4" onSubmit={handleSubmit}>
+                <label className="block">
+                  <span className="mb-2 block font-mono text-[10px] uppercase tracking-[0.28em] text-gray-500">
+                    Email
+                  </span>
+                  <input
+                    type="email"
+                    value={email}
+                    autoComplete="email"
+                    onChange={(event) => setEmail(event.target.value)}
+                    className="w-full rounded-2xl border border-[#232323] bg-[#090909] px-4 py-3 text-sm text-white outline-none transition placeholder:text-gray-600 focus:border-[#ffb7c5]/55"
+                    placeholder="you@example.com"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="mb-2 block font-mono text-[10px] uppercase tracking-[0.28em] text-gray-500">
+                    Password
+                  </span>
+                  <input
+                    type="password"
+                    value={password}
+                    autoComplete={mode === "register" ? "new-password" : "current-password"}
+                    onChange={(event) => setPassword(event.target.value)}
+                    className="w-full rounded-2xl border border-[#232323] bg-[#090909] px-4 py-3 text-sm text-white outline-none transition placeholder:text-gray-600 focus:border-[#ffb7c5]/55"
+                    placeholder="Minimum 6 characters"
+                  />
+                </label>
+
+                {mode === "register" ? (
+                  <label className="block">
+                    <span className="mb-2 block font-mono text-[10px] uppercase tracking-[0.28em] text-gray-500">
+                      Confirm Password
+                    </span>
+                    <input
+                      type="password"
+                      value={confirmPassword}
+                      autoComplete="new-password"
+                      onChange={(event) => setConfirmPassword(event.target.value)}
+                      className="w-full rounded-2xl border border-[#232323] bg-[#090909] px-4 py-3 text-sm text-white outline-none transition placeholder:text-gray-600 focus:border-[#ffb7c5]/55"
+                      placeholder="Repeat your password"
+                    />
+                  </label>
+                ) : null}
+
+                {submitError ? (
+                  <div className="rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100/90">
+                    {submitError}
+                  </div>
+                ) : null}
+
+                <button
+                  type="submit"
+                  disabled={isSubmitting || !authReady}
+                  className="inline-flex w-full items-center justify-center rounded-full bg-[#ffb7c5] px-5 py-3 text-sm font-black uppercase tracking-[0.18em] text-black shadow-[0_0_30px_rgba(255,183,197,0.12)] transition hover:bg-[#ffc8d3] disabled:cursor-not-allowed disabled:bg-[#ffb7c5]/40 disabled:text-black/60"
+                >
+                  {isSubmitting
+                    ? mode === "register"
+                      ? "Creating account..."
+                      : "Signing in..."
+                    : mode === "register"
+                      ? "Create Account"
+                      : "Login"}
+                </button>
+              </form>
+            </div>
+          </motion.div>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
 export default function Home() {
   return (
     <main className="relative isolate min-h-screen overflow-hidden bg-[#0a0a0a] text-[#ededed] font-sans selection:bg-white selection:text-black">
       <SakuraBackground />
 
       <div className="relative z-10">
-        <nav className="flex items-center justify-between border-b border-[#1a1a1a] px-8 py-6">
+        <nav className="flex flex-col gap-5 border-b border-[#1a1a1a] px-8 py-6 md:flex-row md:items-center md:justify-between">
           <Link href="/" className="flex items-center gap-3 transition-opacity hover:opacity-90">
             <span className="text-2xl text-[#ffb7c5] drop-shadow-[0_0_10px_rgba(255,183,197,0.5)]">
               🌸
@@ -165,7 +619,7 @@ export default function Home() {
             </h1>
           </Link>
 
-          <div className="flex items-center gap-8 text-sm font-medium text-gray-400">
+          <div className="flex flex-wrap items-center justify-end gap-3 text-sm font-medium text-gray-400">
             <a href="#feature-showcase" className="transition hover:text-white">
               Features
             </a>
@@ -173,6 +627,7 @@ export default function Home() {
               <span className="h-2 w-2 animate-pulse rounded-full bg-[#ffb7c5] shadow-[0_0_10px_#ffb7c5]"></span>
               <span className="text-[10px] font-mono text-[#ffb7c5]">STATUS: UNDETECTED</span>
             </div>
+            <HeaderAuth />
           </div>
         </nav>
 
