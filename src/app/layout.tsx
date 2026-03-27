@@ -52,6 +52,12 @@ const firebaseModuleScript = `
     return error;
   };
 
+  const hasOwn = (value, key) =>
+    Boolean(value) && Object.prototype.hasOwnProperty.call(value, key);
+
+  const resolvePhotoURL = (details, fallbackPhotoURL = null) =>
+    hasOwn(details, "photoURL") ? details.photoURL ?? null : fallbackPhotoURL ?? null;
+
   const readFileAsDataUrl = (file) =>
     new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -260,7 +266,7 @@ const firebaseModuleScript = `
     loginLower: details.loginLower ?? null,
     displayName: details.displayName ?? user.displayName ?? details.login ?? null,
     profileId: typeof details.profileId === "number" ? details.profileId : null,
-    photoURL: details.photoURL ?? user.photoURL ?? null,
+    photoURL: resolvePhotoURL(details, user.photoURL ?? null),
     providerIds: Array.isArray(details.providerIds) ? details.providerIds : getProviderIds(user),
     loginHistory: Array.isArray(details.loginHistory)
       ? details.loginHistory
@@ -277,7 +283,7 @@ const firebaseModuleScript = `
           login: details.login ?? null,
           displayName: user.displayName ?? details.displayName ?? details.login ?? null,
           profileId: typeof details.profileId === "number" ? details.profileId : null,
-          photoURL: details.photoURL ?? user.photoURL ?? null,
+          photoURL: resolvePhotoURL(details, user.photoURL ?? null),
           providerIds:
             user.providerData.map((provider) => provider?.providerId).filter(Boolean) ??
             details.providerIds ??
@@ -289,6 +295,30 @@ const firebaseModuleScript = `
           presence: normalizePresence(details.presence, window.location.pathname)
         }
       : null;
+
+  const toStoredUserSnapshot = (uid, details = {}) => ({
+    uid,
+    email: typeof details.email === "string" ? details.email : null,
+    login: typeof details.login === "string" ? details.login : null,
+    displayName:
+      typeof details.displayName === "string"
+        ? details.displayName
+        : typeof details.login === "string"
+          ? details.login
+          : null,
+    profileId: typeof details.profileId === "number" ? details.profileId : null,
+    photoURL: resolvePhotoURL(details, null),
+    providerIds: Array.isArray(details.providerIds)
+      ? details.providerIds.filter((providerId) => typeof providerId === "string")
+      : [],
+    creationTime: typeof details.creationTime === "string" ? details.creationTime : null,
+    lastSignInTime: typeof details.lastSignInTime === "string" ? details.lastSignInTime : null,
+    loginHistory: Array.isArray(details.loginHistory)
+      ? details.loginHistory.filter((entry) => typeof entry === "string")
+      : [],
+    visitHistory: normalizeVisitHistory(details.visitHistory),
+    presence: normalizePresence(details.presence, null),
+  });
 
   window.firebaseConfig = firebaseConfig;
 
@@ -319,6 +349,14 @@ const firebaseModuleScript = `
     const findUserByLogin = async (loginLower) => {
       const snapshot = await getDocs(
         query(usersCollection, where("loginLower", "==", loginLower), limit(1))
+      );
+
+      return snapshot.empty ? null : snapshot.docs[0];
+    };
+
+    const findUserByProfileId = async (profileId) => {
+      const snapshot = await getDocs(
+        query(usersCollection, where("profileId", "==", profileId), limit(1))
       );
 
       return snapshot.empty ? null : snapshot.docs[0];
@@ -463,6 +501,7 @@ const firebaseModuleScript = `
               login: window.sakuraCurrentUserSnapshot.login,
               displayName: window.sakuraCurrentUserSnapshot.displayName,
               profileId: window.sakuraCurrentUserSnapshot.profileId,
+              photoURL: window.sakuraCurrentUserSnapshot.photoURL,
               providerIds: window.sakuraCurrentUserSnapshot.providerIds,
               loginHistory: window.sakuraCurrentUserSnapshot.loginHistory,
               visitHistory: window.sakuraCurrentUserSnapshot.visitHistory,
@@ -513,7 +552,7 @@ const firebaseModuleScript = `
           user.displayName ??
           existingData?.displayName ??
           loginDetails.login,
-        photoURL: user.photoURL ?? null,
+        photoURL: resolvePhotoURL(existingData, user.photoURL ?? null),
         providerIds,
         creationTime: user.metadata.creationTime ?? null,
         lastSignInTime: user.metadata.lastSignInTime ?? null,
@@ -672,6 +711,27 @@ const firebaseModuleScript = `
       return snapshot;
     };
 
+    const getProfileById = async (profileId) => {
+      if (!Number.isInteger(profileId) || profileId <= 0) {
+        throw createFirebaseError("profile/invalid-id", "Profile id must be a positive number.");
+      }
+
+      if (
+        window.sakuraCurrentUserSnapshot &&
+        window.sakuraCurrentUserSnapshot.profileId === profileId
+      ) {
+        return window.sakuraCurrentUserSnapshot;
+      }
+
+      const profileDoc = await findUserByProfileId(profileId);
+
+      if (!profileDoc) {
+        return null;
+      }
+
+      return toStoredUserSnapshot(profileDoc.id, profileDoc.data());
+    };
+
     const updateAvatar = async (file) => {
       const user = auth.currentUser;
 
@@ -733,6 +793,45 @@ const firebaseModuleScript = `
       );
     };
 
+    const deleteAvatar = async () => {
+      const user = auth.currentUser;
+
+      if (!user) {
+        throw createFirebaseError("auth/no-current-user", "Sign in again to update your avatar.");
+      }
+
+      try {
+        await setDoc(
+          userRefFor(user.uid),
+          {
+            photoURL: null,
+            updatedAt: new Date().toISOString(),
+          },
+          { merge: true }
+        );
+      } catch (error) {
+        if (!isPermissionDeniedError(error)) {
+          throw error;
+        }
+
+        throw createFirebaseError(
+          "avatar/delete-failed",
+          "Avatar could not be deleted. Check Firestore rules for users/{uid}."
+        );
+      }
+
+      const currentDetails = window.sakuraCurrentUserSnapshot
+        ? buildUserDetailsFromSnapshot(user, window.sakuraCurrentUserSnapshot)
+        : buildFallbackUserDetails(user);
+
+      return publishUserSnapshot(
+        toUserSnapshot(user, {
+          ...currentDetails,
+          photoURL: null,
+        })
+      );
+    };
+
     window.sakuraFirebaseAuth = {
       register: async ({ login, email, password }) => {
         const credentials = await createUserWithEmailAndPassword(auth, email, password);
@@ -781,7 +880,9 @@ const firebaseModuleScript = `
         return snapshot;
       },
       loginWithGoogle,
+      getProfileById,
       updateAvatar,
+      deleteAvatar,
       syncPresence: async (options = {}) => {
         const user = auth.currentUser;
 

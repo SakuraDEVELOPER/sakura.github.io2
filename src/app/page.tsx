@@ -115,7 +115,9 @@ type FirebaseAuthBridge = {
     email: string;
     password: string;
   }) => Promise<AuthUserSnapshot | null>;
+  getProfileById: (profileId: number) => Promise<AuthUserSnapshot | null>;
   updateAvatar: (file: File) => Promise<AuthUserSnapshot | null>;
+  deleteAvatar: () => Promise<AuthUserSnapshot | null>;
   syncPresence: (options?: {
     path?: string;
     source?: string;
