@@ -623,8 +623,7 @@ function HeaderAuth() {
                 {userInitials}
               </span>
             )}
-            <span className="flex min-w-0 items-center gap-2">
-              <span className="h-2.5 w-2.5 rounded-full bg-[#8ce5b2] shadow-[0_0_12px_rgba(140,229,178,0.55)]"></span>
+            <span className="flex min-w-0 items-center">
               <span className="max-w-[220px] truncate text-[12px] font-medium text-[#d6f2e2]">
                 {userLabel}
               </span>
