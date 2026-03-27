@@ -42,7 +42,7 @@ const AUTH_ERROR_EVENT = "sakura-auth-error";
 const USER_UPDATE_EVENT = "sakura-user-update";
 const PROFILE_PATH_STORAGE_KEY = "sakura-profile-path";
 const CURRENT_PROFILE_ID_STORAGE_KEY = "sakura-current-profile-id";
-const PROFILE_BUILD_MARKER = "role-colors-v12";
+const PROFILE_BUILD_MARKER = "role-colors-v13";
 const repoBasePath = "/sakura.github.io";
 const restoreProfilePathScript = `
   (function () {
@@ -631,9 +631,9 @@ export default function ProfilePage() {
                 <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
                   {activeProfile.photoURL ? <img src={activeProfile.photoURL} alt={primaryName} className="h-24 w-24 rounded-[28px] border border-[#2c2023] object-cover shadow-[0_0_30px_rgba(255,183,197,0.14)]" /> : <div className="flex h-24 w-24 items-center justify-center rounded-[28px] border border-[#2c2023] bg-[#1a1012] text-2xl font-black uppercase text-[#ffb7c5] shadow-[0_0_30px_rgba(255,183,197,0.14)]">{initials}</div>}
                   <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <h1 className="max-w-full truncate text-3xl font-black uppercase tracking-tighter text-white">{primaryName}</h1>
-                      <span className={`inline-flex rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] ${activeProfile.presence?.isOnline ? "border-[#1f3b2f] bg-[#0d1713] text-[#8ce5b2]" : "border-[#312228] bg-[#140d11] text-[#ffb7c5]"}`}>{activeProfile.presence?.isOnline ? "Online" : "Offline"}</span>
+                    <div className="flex min-w-0 items-center gap-3">
+                      <h1 className="min-w-0 flex-1 truncate text-3xl font-black uppercase tracking-tighter text-white">{primaryName}</h1>
+                      <span className={`inline-flex shrink-0 rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] ${activeProfile.presence?.isOnline ? "border-[#1f3b2f] bg-[#0d1713] text-[#8ce5b2]" : "border-[#312228] bg-[#140d11] text-[#ffb7c5]"}`}>{activeProfile.presence?.isOnline ? "Online" : "Offline"}</span>
                     </div>
                     <div className="mt-3 flex flex-wrap items-center gap-3">
                       {profileRoles.map((role) => <span key={role} title={roleBadgeLabel(role)} style={{ ...roleBadgeStyle(role), ...roleBadgeTextStyle }} className="inline-flex shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-[10px] font-bold"><span aria-hidden="true" className="inline-flex items-center">{renderRoleBadgeText(role)}</span></span>)}
