@@ -414,7 +414,7 @@ function buildUserInitials(user: AuthUserSnapshot) {
 }
 
 function profileHref(profileId: number | null | undefined) {
-  return profileId ? `${repoBasePath}/profile/${profileId}` : `${repoBasePath}/`;
+  return profileId ? `${repoBasePath}/profile/${profileId}` : `${repoBasePath}/profile`;
 }
 
 function scrollToSection(sectionId: string) {
@@ -835,6 +835,10 @@ function HeaderAuth() {
     }
   };
 
+  const globalProfileId =
+    typeof window !== "undefined" ? window.sakuraCurrentUserSnapshot?.profileId ?? null : null;
+  const resolvedProfileId = visibleUser?.profileId ?? globalProfileId ?? null;
+  const resolvedProfileHref = profileHref(resolvedProfileId);
   const userLabel = visibleUser ? buildUserLabel(visibleUser) : "Signed in";
   const userInitials = visibleUser ? buildUserInitials(visibleUser) : "SA";
   const userAccentRole = visibleUser ? highestPriorityRole(visibleUser.roles ?? []) : "user";
@@ -857,7 +861,11 @@ function HeaderAuth() {
       {visibleUser ? (
         <div className="flex flex-wrap items-center justify-end gap-2">
           <a
-            href={profileHref(visibleUser.profileId)}
+            href={resolvedProfileHref}
+            onClick={(event) => {
+              event.preventDefault();
+              navigateToProfile(visibleUser);
+            }}
             style={userAccentStyle}
             className="group inline-flex max-w-full items-center gap-3 rounded-full border py-1.5 pr-4 pl-1.5 transition hover:opacity-90"
           >
@@ -1172,9 +1180,6 @@ export default function Home() {
           </div>
 
           <div className="flex flex-wrap items-center justify-end gap-3 text-sm font-medium text-gray-400">
-            <a href="#feature-showcase" className="transition hover:text-white">
-              Features
-            </a>
             <HeaderAuth />
           </div>
         </nav>
