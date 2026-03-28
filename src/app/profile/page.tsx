@@ -54,6 +54,7 @@ type RuntimeWindow = Window & {
   firebaseConfig?: { projectId?: string };
   sakuraCurrentUserSnapshot?: UserProfile | null;
   sakuraAuthStateSettled?: boolean;
+  sakuraStartFirebaseAuth?: () => Promise<unknown> | unknown;
   sakuraFirebaseAuth?: Bridge;
   sakuraFirebaseAuthError?: string;
 };
@@ -609,6 +610,7 @@ export default function ProfilePage() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const runtime = getWindowState();
+    void runtime.sakuraStartFirebaseAuth?.();
     let unsubscribe: () => void = () => {};
     const sync = () => {
       if (runtime.sakuraFirebaseAuth) {
@@ -1138,7 +1140,7 @@ export default function ProfilePage() {
               <div className="border-b border-[#1b1b1b] bg-[radial-gradient(circle_at_top,rgba(255,183,197,0.16),transparent_55%)] px-8 py-8">
                 <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
                   <div className="flex shrink-0 flex-col items-center gap-3">
-                    {activeProfile.photoURL ? <img src={activeProfile.photoURL} alt={primaryName} className="h-24 w-24 rounded-[28px] border border-[#2c2023] object-cover shadow-[0_0_30px_rgba(255,183,197,0.14)]" /> : <div className="flex h-24 w-24 items-center justify-center rounded-[28px] border border-[#2c2023] bg-[#1a1012] text-2xl font-black uppercase text-[#ffb7c5] shadow-[0_0_30px_rgba(255,183,197,0.14)]">{initials}</div>}
+                    {activeProfile.photoURL ? <img src={activeProfile.photoURL} alt={primaryName} decoding="async" className="h-24 w-24 rounded-[28px] border border-[#2c2023] object-cover shadow-[0_0_30px_rgba(255,183,197,0.14)]" /> : <div className="flex h-24 w-24 items-center justify-center rounded-[28px] border border-[#2c2023] bg-[#1a1012] text-2xl font-black uppercase text-[#ffb7c5] shadow-[0_0_30px_rgba(255,183,197,0.14)]">{initials}</div>}
                     <span className={`inline-flex min-w-[104px] shrink-0 justify-center rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] ${activeProfile.presence?.isOnline ? "border-[#1f3b2f] bg-[#0d1713] text-[#8ce5b2]" : "border-[#312228] bg-[#140d11] text-[#ffb7c5]"}`}>{activeProfile.presence?.isOnline ? "Online" : "Offline"}</span>
                   </div>
                   <div className="min-w-0">
@@ -1266,7 +1268,7 @@ export default function ProfilePage() {
                       return <div key={comment.id} className="rounded-[24px] border border-[#1d1d1d] bg-[#090909] px-4 py-4">
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex min-w-0 items-start gap-3">
-                            {resolvedCommentAuthorPhotoURL ? <img src={resolvedCommentAuthorPhotoURL} alt={comment.authorName} className="h-11 w-11 shrink-0 rounded-2xl border border-[#2a2022] object-cover shadow-[0_0_18px_rgba(255,183,197,0.1)]" /> : <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[#2a2022] bg-[#1a1012] text-[11px] font-black uppercase text-[#ffb7c5] shadow-[0_0_18px_rgba(255,183,197,0.08)]">{commentInitials}</div>}
+                            {resolvedCommentAuthorPhotoURL ? <img src={resolvedCommentAuthorPhotoURL} alt={comment.authorName} loading="lazy" decoding="async" className="h-11 w-11 shrink-0 rounded-2xl border border-[#2a2022] object-cover shadow-[0_0_18px_rgba(255,183,197,0.1)]" /> : <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[#2a2022] bg-[#1a1012] text-[11px] font-black uppercase text-[#ffb7c5] shadow-[0_0_18px_rgba(255,183,197,0.08)]">{commentInitials}</div>}
                             <div className="min-w-0">
                               {comment.authorProfileId ? <a href={profilePath(comment.authorProfileId)} style={commentAuthorStyle} className="block truncate text-sm font-semibold transition hover:text-white">{comment.authorName}</a> : <p style={commentAuthorStyle} className="truncate text-sm font-semibold">{comment.authorName}</p>}
                               <p className="mt-1 text-xs text-gray-500">{formatTime(comment.createdAt)}</p>

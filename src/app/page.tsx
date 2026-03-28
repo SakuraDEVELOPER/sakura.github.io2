@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
-import { motion } from "framer-motion";
+import { LazyMotion, domAnimation, m } from "framer-motion";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 
 type ShowcaseSlide = {
@@ -138,10 +138,19 @@ declare global {
     loginWithGoogle?: () => Promise<AuthUserSnapshot | null>;
     sakuraCurrentUserSnapshot?: AuthUserSnapshot | null;
     sakuraAuthStateSettled?: boolean;
+    sakuraStartFirebaseAuth?: () => Promise<unknown> | unknown;
     sakuraFirebaseAuth?: FirebaseAuthBridge;
     sakuraFirebaseAuthError?: string;
   }
 }
+
+const requestFirebaseAuthBoot = () => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  void window.sakuraStartFirebaseAuth?.();
+};
 
 const AUTH_READY_EVENT = "sakura-auth-ready";
 const AUTH_ERROR_EVENT = "sakura-auth-error";
@@ -498,7 +507,7 @@ function SakuraBackground() {
   return (
     <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none" aria-hidden="true">
       {sakuraLeaves.map((leaf) => (
-        <motion.div
+        <m.div
           key={leaf.id}
           initial={{
             top: -20,
@@ -521,7 +530,7 @@ function SakuraBackground() {
           className="absolute text-xs text-[#ffb7c5]"
         >
           🌸
-        </motion.div>
+        </m.div>
       ))}
     </div>
   );
@@ -659,6 +668,7 @@ function HeaderAuth() {
   }, [flashMessage]);
 
   const openModal = (nextMode: AuthMode) => {
+    requestFirebaseAuthBoot();
     setMode(nextMode);
     setIsModalOpen(true);
     setSubmitError(null);
@@ -686,6 +696,7 @@ function HeaderAuth() {
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    requestFirebaseAuthBoot();
 
     if (!window.sakuraFirebaseAuth) {
       setSubmitError(
@@ -788,6 +799,8 @@ function HeaderAuth() {
   };
 
   const handleGoogleLogin = async () => {
+    requestFirebaseAuthBoot();
+
     if (!window.sakuraFirebaseAuth) {
       setSubmitError(
         authLoadError ?? "Firebase Auth еще не готов. Подождите пару секунд и попробуйте снова."
@@ -843,6 +856,7 @@ function HeaderAuth() {
               <img
                 src={visibleUser.photoURL}
                 alt={userLabel}
+                decoding="async"
                 style={userAvatarStyle}
                 className="h-9 w-9 rounded-full border object-cover"
               />
@@ -910,7 +924,7 @@ function HeaderAuth() {
             className="absolute inset-0 bg-black/75 backdrop-blur-sm"
           />
 
-          <motion.div
+          <m.div
             initial={{ opacity: 0, scale: 0.94, y: 18 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             transition={{ duration: 0.22 }}
@@ -1098,7 +1112,7 @@ function HeaderAuth() {
                 </button>
               </form>
             </div>
-          </motion.div>
+          </m.div>
         </div>
       ) : null}
     </>
@@ -1107,8 +1121,9 @@ function HeaderAuth() {
 
 export default function Home() {
   return (
-    <main className="relative isolate min-h-screen overflow-hidden bg-[#0a0a0a] text-[#ededed] font-sans selection:bg-white selection:text-black">
-      <SakuraBackground />
+    <LazyMotion features={domAnimation}>
+      <main className="relative isolate min-h-screen overflow-hidden bg-[#0a0a0a] text-[#ededed] font-sans selection:bg-white selection:text-black">
+        <SakuraBackground />
 
       <div className="relative z-10">
         <nav className="flex flex-col gap-5 border-b border-[#1a1a1a] px-8 py-6 md:flex-row md:items-center md:justify-between">
@@ -1136,14 +1151,14 @@ export default function Home() {
         </nav>
 
         <section className="flex flex-col items-center justify-center px-4 pt-32 pb-20">
-          <motion.h1
+          <m.h1
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8 }}
             className="mb-6 text-center text-7xl font-black tracking-tighter uppercase"
           >
             Feel The <br /> <span className="italic text-gray-500">Sakura Power</span>
-          </motion.h1>
+          </m.h1>
 
           <p className="mb-10 max-w-xl text-center text-lg leading-relaxed text-gray-400">
             Бесплатное решение чита для Dota 2. Работа с памятью, и приятное глазу меню.
@@ -1181,7 +1196,8 @@ export default function Home() {
         <SetupSteps />
         <DownloadSection />
       </div>
-    </main>
+      </main>
+    </LazyMotion>
   );
 }
 
@@ -1195,7 +1211,7 @@ function FeatureBox({
   delay: number;
 }) {
   return (
-    <motion.div
+    <m.div
       initial={{ opacity: 0, y: 20 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
@@ -1204,7 +1220,7 @@ function FeatureBox({
     >
       <h3 className="mb-4 font-mono text-[10px] uppercase tracking-[0.2em] text-gray-500">{title}</h3>
       <p className="text-sm leading-snug text-gray-300">{desc}</p>
-    </motion.div>
+    </m.div>
   );
 }
 
@@ -1503,7 +1519,7 @@ function FeatureShowcase() {
         </div>
 
           <div className="grid items-stretch gap-8 lg:grid-cols-[0.85fr_1.15fr]">
-            <motion.div
+            <m.div
               key={`copy-${slide.id}`}
               initial={{ opacity: 0, y: 24 }}
               animate={{ opacity: 1, y: 0 }}
@@ -1526,7 +1542,7 @@ function FeatureShowcase() {
                 </span>
                 <p className="text-sm leading-relaxed text-gray-500">{slide.mediaCaption}</p>
               </div>
-            </motion.div>
+            </m.div>
 
             <div className="relative flex items-center px-4 md:px-8">
               <button
@@ -1538,7 +1554,7 @@ function FeatureShowcase() {
                 ←
               </button>
 
-              <motion.div
+              <m.div
                 key={`media-${slide.id}`}
                 initial={{ opacity: 0, x: 18 }}
                 animate={{ opacity: 1, x: 0 }}
@@ -1564,6 +1580,8 @@ function FeatureShowcase() {
                       src={slide.mediaSrc}
                       alt={slide.title}
                       draggable={false}
+                      loading="lazy"
+                      decoding="async"
                       className="pointer-events-none absolute inset-0 h-full w-full select-none object-contain transition-transform duration-500 group-hover:scale-[1.01]"
                     />
                     <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-black/65 via-black/25 to-transparent"></div>
@@ -1591,7 +1609,7 @@ function FeatureShowcase() {
                     />
                   ))}
                 </div>
-              </motion.div>
+              </m.div>
 
               <button
                 type="button"
@@ -1677,6 +1695,7 @@ function FeatureShowcase() {
                     src={previewSlide.mediaSrc}
                     alt={previewSlide.title}
                     draggable={false}
+                    decoding="async"
                     className="pointer-events-none block h-auto w-full select-none"
                   />
                 </div>
@@ -1716,7 +1735,7 @@ function SetupSteps() {
         </h2>
         <div className="grid grid-cols-1 gap-12 md:grid-cols-3">
           {steps.map((step, index) => (
-            <motion.div
+            <m.div
               key={step.num}
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
@@ -1729,7 +1748,7 @@ function SetupSteps() {
               </span>
               <h3 className="relative z-10 mb-4 text-lg font-bold text-white">{step.title}</h3>
               <p className="text-sm leading-relaxed text-gray-500">{step.desc}</p>
-            </motion.div>
+            </m.div>
           ))}
         </div>
       </div>
@@ -1743,7 +1762,7 @@ function DownloadSection() {
       id="download"
       className="flex flex-col items-center border-y border-[#1a1a1a] bg-[#050505] px-10 py-24"
     >
-      <motion.div
+      <m.div
         initial={{ opacity: 0, scale: 0.95 }}
         whileInView={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.5 }}
@@ -1788,7 +1807,7 @@ function DownloadSection() {
           </button>
           <span className="text-center font-mono text-[10px] text-gray-600">MD5: 7A9D...F2C1</span>
         </div>
-      </motion.div>
+      </m.div>
     </section>
   );
 }

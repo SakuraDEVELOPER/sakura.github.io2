@@ -3,8 +3,38 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
 const firebaseModuleScript = `
-  (async () => {
-    try {
+  (() => {
+    let loadPromise;
+    let idleTimerId = 0;
+    let idleCallbackId = null;
+    let teardownInteractionListeners = () => {};
+    const cleanupDeferredStart = () => {
+      if (idleTimerId) {
+        window.clearTimeout(idleTimerId);
+        idleTimerId = 0;
+      }
+
+      if (
+        idleCallbackId !== null &&
+        "cancelIdleCallback" in window &&
+        typeof window.cancelIdleCallback === "function"
+      ) {
+        window.cancelIdleCallback(idleCallbackId);
+      }
+
+      idleCallbackId = null;
+      teardownInteractionListeners();
+      teardownInteractionListeners = () => {};
+    };
+    const startFirebaseAuth = () => {
+      cleanupDeferredStart();
+
+      if (loadPromise) {
+        return loadPromise;
+      }
+
+      loadPromise = (async () => {
+        try {
       const [
         {
           getApps,
@@ -1962,6 +1992,42 @@ const firebaseModuleScript = `
         })
       );
       console.error("Firebase Auth module load failed:", error);
+    }
+      })();
+
+      return loadPromise;
+    };
+
+    window.sakuraStartFirebaseAuth = startFirebaseAuth;
+
+    if (/(?:^|\\/)profile(?:\\/|$)/.test(window.location.pathname)) {
+      startFirebaseAuth();
+      return;
+    }
+
+    const interactionEvents = ["pointerdown", "keydown", "touchstart"];
+    const handleInteractionStart = () => {
+      startFirebaseAuth();
+    };
+
+    interactionEvents.forEach((eventName) => {
+      window.addEventListener(eventName, handleInteractionStart, { once: true, passive: true });
+    });
+
+    teardownInteractionListeners = () => {
+      interactionEvents.forEach((eventName) => {
+        window.removeEventListener(eventName, handleInteractionStart);
+      });
+    };
+
+    if ("requestIdleCallback" in window && typeof window.requestIdleCallback === "function") {
+      idleCallbackId = window.requestIdleCallback(() => {
+        startFirebaseAuth();
+      }, { timeout: 1500 });
+    } else {
+      idleTimerId = window.setTimeout(() => {
+        startFirebaseAuth();
+      }, 1200);
     }
   })();
 `;
