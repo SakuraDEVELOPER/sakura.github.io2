@@ -433,6 +433,76 @@ const firebaseModuleScript = `
       (left, right) =>
         new Date(right.createdAt ?? 0).getTime() - new Date(left.createdAt ?? 0).getTime()
     );
+  const enrichProfileCommentsWithAuthors = async (comments) => {
+    const commentsWithAuthors = [...comments];
+    const authorByUid = new Map();
+    const authorByProfileId = new Map();
+    const authorUids = [...new Set(
+      commentsWithAuthors
+        .map((comment) => comment.authorUid)
+        .filter((authorUid) => typeof authorUid === "string" && authorUid)
+    )];
+
+    await Promise.all(
+      authorUids.map(async (authorUid) => {
+        try {
+          const authorSnapshot = await getDoc(userRefFor(authorUid));
+
+          if (authorSnapshot.exists()) {
+            authorByUid.set(authorUid, authorSnapshot.data());
+          }
+        } catch (error) {
+        }
+      })
+    );
+
+    const profileIds = [...new Set(
+      commentsWithAuthors
+        .filter(
+          (comment) =>
+            typeof comment.authorProfileId === "number" &&
+            !(
+              typeof comment.authorUid === "string" &&
+              comment.authorUid &&
+              authorByUid.has(comment.authorUid)
+            )
+        )
+        .map((comment) => comment.authorProfileId)
+    )];
+
+    await Promise.all(
+      profileIds.map(async (authorProfileId) => {
+        try {
+          const authorDoc = await findUserByProfileId(authorProfileId);
+
+          if (authorDoc) {
+            authorByProfileId.set(authorProfileId, authorDoc.data());
+          }
+        } catch (error) {
+        }
+      })
+    );
+
+    return commentsWithAuthors.map((comment) => {
+      const authorDetails =
+        (typeof comment.authorUid === "string" && comment.authorUid
+          ? authorByUid.get(comment.authorUid)
+          : null) ??
+        (typeof comment.authorProfileId === "number"
+          ? authorByProfileId.get(comment.authorProfileId)
+          : null) ??
+        null;
+
+      if (!authorDetails) {
+        return comment;
+      }
+
+      return {
+        ...comment,
+        authorPhotoURL: resolvePhotoURL(authorDetails, comment.authorPhotoURL),
+      };
+    });
+  };
 
   const buildVisitHistory = (existingHistory, nextEntry) =>
     [nextEntry, ...normalizeVisitHistory(existingHistory)]
@@ -1195,7 +1265,7 @@ const firebaseModuleScript = `
           query(profileCommentsCollection, where("profileId", "==", profileId))
         );
 
-        return sortProfileComments(
+        const comments = sortProfileComments(
           snapshot.docs
             .map((commentDoc) => toStoredProfileComment(commentDoc.id, commentDoc.data()))
             .filter(
@@ -1205,6 +1275,8 @@ const firebaseModuleScript = `
                 comment.message
             )
         );
+
+        return enrichProfileCommentsWithAuthors(comments);
       };
 
       try {
