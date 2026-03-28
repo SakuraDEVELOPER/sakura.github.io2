@@ -63,6 +63,7 @@
   const AVATAR_EXPORT_QUALITY = 0.72;
   const PROFILE_COMMENT_MAX_LENGTH = 280;
   const PROFILE_LOOKUP_TIMEOUT_MS = 5000;
+  const DISPLAY_NAME_MAX_LENGTH = 48;
   const USER_UPDATE_EVENT = "sakura-user-update";
   const AUTH_STATE_SETTLED_EVENT = "sakura-auth-state-settled";
   const CURRENT_PROFILE_ID_STORAGE_KEY = "sakura-current-profile-id";
@@ -207,6 +208,10 @@
       .replace(/\\s+/g, "")
       .replace(/[^A-Za-z\u0400-\u04FF0-9._-]/g, "")
       .slice(0, LOGIN_MAX_LENGTH);
+  const sanitizeDisplayName = (value) =>
+    typeof value === "string"
+      ? value.trim().replace(/\\s+/g, " ").slice(0, DISPLAY_NAME_MAX_LENGTH)
+      : "";
 
   const normalizeLogin = (value) => sanitizeLogin(value).toLocaleLowerCase();
 
@@ -460,6 +465,8 @@
     typeof value === "string"
       ? value.trim().replace(/\\s+/g, " ").slice(0, 48)
       : "";
+  const normalizeProfileCommentAuthorLookupKey = (value) =>
+    normalizeProfileCommentAuthorName(value).toLocaleLowerCase();
   const normalizeProfileCommentPhotoURL = (value) =>
     typeof value === "string" && value ? value : null;
   const normalizeProfileCommentCreatedAt = (value) => {
@@ -516,7 +523,7 @@
     const commentsWithAuthors = [...comments];
     const authorByUid = new Map();
     const authorByProfileId = new Map();
-    const authorByLogin = new Map();
+    const authorByName = new Map();
     const authorUids = [...new Set(
       commentsWithAuthors
         .map((comment) => comment.authorUid)
@@ -563,7 +570,7 @@
       })
     );
 
-    const authorLogins = [...new Set(
+    const authorNames = [...new Set(
       commentsWithAuthors
         .filter(
           (comment) =>
@@ -577,17 +584,17 @@
               authorByProfileId.has(comment.authorProfileId)
             )
         )
-        .map((comment) => normalizeLogin(comment.authorName ?? ""))
+        .map((comment) => normalizeProfileCommentAuthorName(comment.authorName ?? ""))
         .filter(Boolean)
     )];
 
     await Promise.all(
-      authorLogins.map(async (authorLogin) => {
+      authorNames.map(async (authorName) => {
         try {
-          const authorDoc = await findUserByLogin(authorLogin);
+          const authorDoc = await findUserByAuthorName(authorName);
 
           if (authorDoc) {
-            authorByLogin.set(authorLogin, authorDoc.data());
+            authorByName.set(normalizeProfileCommentAuthorLookupKey(authorName), authorDoc.data());
           }
         } catch (error) {
         }
@@ -595,7 +602,7 @@
     );
 
     return commentsWithAuthors.map((comment) => {
-      const authorLogin = normalizeLogin(comment.authorName ?? "");
+      const authorNameKey = normalizeProfileCommentAuthorLookupKey(comment.authorName ?? "");
       const authorDetails =
         (typeof comment.authorUid === "string" && comment.authorUid
           ? authorByUid.get(comment.authorUid)
@@ -603,7 +610,7 @@
         (typeof comment.authorProfileId === "number"
           ? authorByProfileId.get(comment.authorProfileId)
           : null) ??
-        (authorLogin ? authorByLogin.get(authorLogin) : null) ??
+        (authorNameKey ? authorByName.get(authorNameKey) : null) ??
         null;
 
       if (!authorDetails) {
@@ -821,6 +828,37 @@
       );
 
       return snapshot.empty ? null : snapshot.docs[0];
+    };
+    const findUserByAuthorName = async (authorName) => {
+      const normalizedAuthorName = normalizeProfileCommentAuthorName(authorName);
+
+      if (!normalizedAuthorName) {
+        return null;
+      }
+
+      const loginLower = normalizeLogin(normalizedAuthorName);
+
+      if (loginLower) {
+        const userByLoginLower = await findUserByLogin(loginLower);
+
+        if (userByLoginLower) {
+          return userByLoginLower;
+        }
+      }
+
+      const userByLogin = await getDocs(
+        query(usersCollection, where("login", "==", normalizedAuthorName), limit(1))
+      );
+
+      if (!userByLogin.empty) {
+        return userByLogin.docs[0];
+      }
+
+      const userByDisplayName = await getDocs(
+        query(usersCollection, where("displayName", "==", normalizedAuthorName), limit(1))
+      );
+
+      return userByDisplayName.empty ? null : userByDisplayName.docs[0];
     };
 
     const findUserByProfileId = async (profileId) => {
@@ -1277,6 +1315,58 @@
       );
 
       return snapshot;
+    };
+    const updateDisplayName = async (nextDisplayName) => {
+      const user = auth.currentUser;
+
+      if (!user || user.isAnonymous) {
+        throw createFirebaseError("auth/no-current-user", "Sign in again to update your profile name.");
+      }
+
+      const sanitizedDisplayName = sanitizeDisplayName(nextDisplayName);
+
+      if (!sanitizedDisplayName) {
+        throw createFirebaseError("display-name/empty", "Enter a profile name.");
+      }
+
+      const userRef = userRefFor(user.uid);
+      const existingSnapshot = await getDoc(userRef);
+      const existingData = existingSnapshot.exists() ? existingSnapshot.data() : {};
+
+      try {
+        await setDoc(
+          userRef,
+          {
+            displayName: sanitizedDisplayName,
+            updatedAt: new Date().toISOString(),
+          },
+          { merge: true }
+        );
+      } catch (error) {
+        if (!isPermissionDeniedError(error)) {
+          throw error;
+        }
+
+        throw createFirebaseError(
+          "display-name/persist-failed",
+          "Profile name could not be saved. Check Firestore rules for users/{uid}."
+        );
+      }
+
+      if ((typeof user.displayName === "string" ? user.displayName.trim() : null) !== sanitizedDisplayName) {
+        try {
+          await updateProfile(user, { displayName: sanitizedDisplayName });
+        } catch (error) {
+          console.error("Failed to sync Firebase Auth displayName after profile name change:", error);
+        }
+      }
+
+      return publishUserSnapshot(
+        toUserSnapshot(user, {
+          ...existingData,
+          displayName: sanitizedDisplayName,
+        })
+      );
     };
 
     const loginWithGoogle = async () => {
@@ -1891,6 +1981,7 @@
         return snapshot;
       },
       loginWithGoogle,
+      updateDisplayName,
       updateUsername,
       getProfileById,
       getProfileComments,

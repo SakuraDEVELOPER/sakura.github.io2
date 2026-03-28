@@ -488,6 +488,8 @@ const firebaseModuleScript = `
     typeof value === "string"
       ? value.trim().replace(/\\s+/g, " ").slice(0, 48)
       : "";
+  const normalizeProfileCommentAuthorLookupKey = (value) =>
+    normalizeProfileCommentAuthorName(value).toLocaleLowerCase();
   const normalizeProfileCommentPhotoURL = (value) =>
     typeof value === "string" && value ? value : null;
   const normalizeProfileCommentCreatedAt = (value) => {
@@ -544,7 +546,7 @@ const firebaseModuleScript = `
     const commentsWithAuthors = [...comments];
     const authorByUid = new Map();
     const authorByProfileId = new Map();
-    const authorByLogin = new Map();
+    const authorByName = new Map();
     const authorUids = [...new Set(
       commentsWithAuthors
         .map((comment) => comment.authorUid)
@@ -591,7 +593,7 @@ const firebaseModuleScript = `
       })
     );
 
-    const authorLogins = [...new Set(
+    const authorNames = [...new Set(
       commentsWithAuthors
         .filter(
           (comment) =>
@@ -605,17 +607,17 @@ const firebaseModuleScript = `
               authorByProfileId.has(comment.authorProfileId)
             )
         )
-        .map((comment) => normalizeLogin(comment.authorName ?? ""))
+        .map((comment) => normalizeProfileCommentAuthorName(comment.authorName ?? ""))
         .filter(Boolean)
     )];
 
     await Promise.all(
-      authorLogins.map(async (authorLogin) => {
+      authorNames.map(async (authorName) => {
         try {
-          const authorDoc = await findUserByLogin(authorLogin);
+          const authorDoc = await findUserByAuthorName(authorName);
 
           if (authorDoc) {
-            authorByLogin.set(authorLogin, authorDoc.data());
+            authorByName.set(normalizeProfileCommentAuthorLookupKey(authorName), authorDoc.data());
           }
         } catch (error) {
         }
@@ -623,7 +625,7 @@ const firebaseModuleScript = `
     );
 
     return commentsWithAuthors.map((comment) => {
-      const authorLogin = normalizeLogin(comment.authorName ?? "");
+      const authorNameKey = normalizeProfileCommentAuthorLookupKey(comment.authorName ?? "");
       const authorDetails =
         (typeof comment.authorUid === "string" && comment.authorUid
           ? authorByUid.get(comment.authorUid)
@@ -631,7 +633,7 @@ const firebaseModuleScript = `
         (typeof comment.authorProfileId === "number"
           ? authorByProfileId.get(comment.authorProfileId)
           : null) ??
-        (authorLogin ? authorByLogin.get(authorLogin) : null) ??
+        (authorNameKey ? authorByName.get(authorNameKey) : null) ??
         null;
 
       if (!authorDetails) {
@@ -849,6 +851,37 @@ const firebaseModuleScript = `
       );
 
       return snapshot.empty ? null : snapshot.docs[0];
+    };
+    const findUserByAuthorName = async (authorName) => {
+      const normalizedAuthorName = normalizeProfileCommentAuthorName(authorName);
+
+      if (!normalizedAuthorName) {
+        return null;
+      }
+
+      const loginLower = normalizeLogin(normalizedAuthorName);
+
+      if (loginLower) {
+        const userByLoginLower = await findUserByLogin(loginLower);
+
+        if (userByLoginLower) {
+          return userByLoginLower;
+        }
+      }
+
+      const userByLogin = await getDocs(
+        query(usersCollection, where("login", "==", normalizedAuthorName), limit(1))
+      );
+
+      if (!userByLogin.empty) {
+        return userByLogin.docs[0];
+      }
+
+      const userByDisplayName = await getDocs(
+        query(usersCollection, where("displayName", "==", normalizedAuthorName), limit(1))
+      );
+
+      return userByDisplayName.empty ? null : userByDisplayName.docs[0];
     };
 
     const findUserByProfileId = async (profileId) => {
