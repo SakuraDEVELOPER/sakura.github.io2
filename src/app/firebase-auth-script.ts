@@ -1,9 +1,4 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import FirebaseAuthBoot from "./firebase-auth-boot";
-import "./globals.css";
-
-const firebaseModuleScript = `
+﻿const firebaseModuleScript = `
   (() => {
     let loadPromise;
     let idleTimerId = 0;
@@ -95,7 +90,7 @@ const firebaseModuleScript = `
   const AUTH_STATE_SETTLED_EVENT = "sakura-auth-state-settled";
   const CURRENT_PROFILE_ID_STORAGE_KEY = "sakura-current-profile-id";
   const AVATAR_CONTENT_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
-  const LOGIN_PATTERN = /^[A-Za-zА-Яа-яЁё0-9._-]+$/;
+  const LOGIN_PATTERN = /^[A-Za-zРђ-РЇР°-СЏРЃС‘0-9._-]+$/;
 
   const createFirebaseError = (code, message) => {
     const error = new Error(message);
@@ -233,7 +228,7 @@ const firebaseModuleScript = `
     value
       .trim()
       .replace(/\\s+/g, "")
-      .replace(/[^A-Za-zА-Яа-яЁё0-9._-]/g, "")
+      .replace(/[^A-Za-zРђ-РЇР°-СЏРЃС‘0-9._-]/g, "")
       .slice(0, LOGIN_MAX_LENGTH);
 
   const normalizeLogin = (value) => sanitizeLogin(value).toLocaleLowerCase();
@@ -2033,36 +2028,4 @@ const firebaseModuleScript = `
   })();
 `;
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
-export const metadata: Metadata = {
-  title: "Sakura",
-  description:
-    "Free Dota 2 cheat with camera distance, enemy resource bars, and a clean in-game menu.",
-};
-
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
-  return (
-    <html
-      lang="ru"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col">
-        {children}
-        <FirebaseAuthBoot />
-      </body>
-    </html>
-  );
-}
+export default firebaseModuleScript;
