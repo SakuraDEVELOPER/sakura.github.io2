@@ -362,6 +362,21 @@ const roleBadgeStyle = (role: string): CSSProperties => {
     boxShadow: "0 0 18px rgba(34,197,94,0.22)",
   };
 };
+const roleHeadlineStyle = (role: string | null | undefined): CSSProperties => {
+  if (!role) {
+    return {
+      color: "#ffffff",
+      textShadow: "0 0 18px rgba(255,255,255,0.08)",
+    };
+  }
+
+  const badgeStyle = roleBadgeStyle(role);
+
+  return {
+    color: typeof badgeStyle.color === "string" ? badgeStyle.color : "#ffffff",
+    textShadow: typeof badgeStyle.boxShadow === "string" ? badgeStyle.boxShadow : "0 0 18px rgba(255,255,255,0.08)",
+  };
+};
 const ROLE_MANAGER_NAMES = new Set(["root"]);
 const REMOVED_ROLE_NAMES = new Set([
   "super administrator",
@@ -583,6 +598,8 @@ export default function ProfilePage() {
   const shouldShowUsernameSetup = Boolean(isOwner && activeProfile && !hasUsername);
   const profileRoles = activeProfile?.roles?.length ? normalizeRoleSelection(activeProfile.roles) : ["user"];
   const normalizedProfileRoles = profileRoles;
+  const topProfileRole = profileRoles[0] ?? null;
+  const profileHeadlineStyle = roleHeadlineStyle(topProfileRole);
   const shouldShowVerificationBanner = Boolean(
     isOwner &&
       activeProfile?.email &&
@@ -922,7 +939,7 @@ export default function ProfilePage() {
                     <span className={`inline-flex min-w-[104px] shrink-0 justify-center rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] ${activeProfile.presence?.isOnline ? "border-[#1f3b2f] bg-[#0d1713] text-[#8ce5b2]" : "border-[#312228] bg-[#140d11] text-[#ffb7c5]"}`}>{activeProfile.presence?.isOnline ? "Online" : "Offline"}</span>
                   </div>
                   <div className="min-w-0">
-                    <h1 className="min-w-0 truncate text-3xl font-black uppercase tracking-tighter text-white">{primaryName}</h1>
+                    <h1 style={profileHeadlineStyle} className="min-w-0 truncate text-3xl font-black uppercase tracking-tighter">{primaryName}</h1>
                     {hasUsername ? <p className="mt-2 text-sm font-medium text-[#c7d4cc]">@{activeProfile.login}</p> : shouldShowUsernameSetup ? <p className="mt-2 text-sm text-gray-500">Username not set yet.</p> : null}
                     <div className="mt-3 flex flex-wrap items-center gap-3">
                       {profileRoles.map((role) => <span key={role} title={roleBadgeLabel(role)} style={{ ...roleBadgeStyle(role), ...roleBadgeTextStyle }} className="inline-flex shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-[10px] font-bold"><span aria-hidden="true" className="inline-flex items-center">{renderRoleBadgeText(role)}</span></span>)}
