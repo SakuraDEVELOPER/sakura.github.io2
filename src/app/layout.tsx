@@ -365,8 +365,13 @@ const firebaseModuleScript = `
   };
 
   const ROLE_MANAGER_NAMES = new Set(["root"]);
+  const COMMENT_MODERATOR_ROLE_NAMES = new Set(["root", "co-owner", "moderator"]);
   const canManageRoles = (roles) =>
     normalizeRoles(roles).some((role) => ROLE_MANAGER_NAMES.has(normalizeRoleName(role)));
+  const canModerateComments = (roles) =>
+    normalizeRoles(roles).some((role) =>
+      COMMENT_MODERATOR_ROLE_NAMES.has(normalizeRoleName(role))
+    );
   const requiresEmailVerification = (roles) =>
     !normalizeRoles(roles).some((role) => normalizeRoleName(role) === "root");
 
@@ -1453,11 +1458,12 @@ const firebaseModuleScript = `
         typeof actorSnapshot?.profileId === "number" &&
         typeof comment.profileId === "number" &&
         actorSnapshot.profileId === comment.profileId;
+      const hasCommentModerationAccess = canModerateComments(actorSnapshot?.roles ?? []);
 
-      if (!isAuthor && !ownsTargetProfile) {
+      if (!isAuthor && !ownsTargetProfile && !hasCommentModerationAccess) {
         throw createFirebaseError(
           "comments/delete-forbidden",
-          "You can only delete your own comments or comments on your profile."
+          "You can only delete your own comments, comments on your profile, or moderate comments with staff roles."
         );
       }
 

@@ -106,7 +106,7 @@ const getProfileActionErrorMessage = (error: unknown, fallback: string) => {
   }
 
   if (code === "comments/delete-forbidden") {
-    return "You can only delete your own comments or comments on your profile.";
+    return "You can only delete your own comments, comments on your profile, or moderate comments with staff roles.";
   }
 
   return error instanceof Error ? error.message : fallback;
@@ -392,6 +392,7 @@ const roleHeadlineStyle = (role: string | null | undefined): CSSProperties => {
   };
 };
 const ROLE_MANAGER_NAMES = new Set(["root"]);
+const COMMENT_MODERATOR_ROLE_NAMES = new Set(["root", "co-owner", "moderator"]);
 const REMOVED_ROLE_NAMES = new Set([
   "super administrator",
   "administrator",
@@ -433,6 +434,10 @@ const normalizeRoleSelection = (roles: string[]) => {
 };
 const canManageRoles = (roles: string[]) =>
   normalizeRoleSelection(roles).some((role) => ROLE_MANAGER_NAMES.has(normalizeRoleName(role)));
+const canModerateComments = (roles: string[]) =>
+  normalizeRoleSelection(roles).some((role) =>
+    COMMENT_MODERATOR_ROLE_NAMES.has(normalizeRoleName(role))
+  );
 const shouldPreferLoginName = (user: Pick<UserProfile, "login" | "displayName" | "providerIds">) =>
   Boolean(user.login?.trim()) &&
   (user.providerIds.includes("password") || !user.displayName?.trim());
@@ -654,6 +659,7 @@ export default function ProfilePage() {
     Boolean(
       visibleCurrentUser &&
         (comment.authorUid === visibleCurrentUser.uid ||
+          canModerateComments(visibleCurrentUser.roles) ||
           (isOwner &&
             typeof activeProfile?.profileId === "number" &&
             comment.profileId === activeProfile.profileId))

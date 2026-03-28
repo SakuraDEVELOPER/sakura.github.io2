@@ -4,7 +4,7 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 
 type ShowcaseSlide = {
   id: string;
@@ -147,6 +147,155 @@ const AUTH_READY_EVENT = "sakura-auth-ready";
 const AUTH_ERROR_EVENT = "sakura-auth-error";
 const USER_UPDATE_EVENT = "sakura-user-update";
 const LOGIN_PATTERN = /^[A-Za-zА-Яа-яЁё0-9._-]+$/;
+
+const ROLE_CHIP_ORDER = new Map([
+  ["root", 0],
+  ["co-owner", 1],
+  ["super administrator", 2],
+  ["administrator", 3],
+  ["sponsor", 4],
+  ["moderator", 5],
+  ["user", 6],
+]);
+
+function isUserLikeRole(role: string) {
+  return /^u(?:[\s_-]*s)?[\s_-]*e[\s_-]*r$/i.test(role.trim());
+}
+
+function toCompactRoleToken(role: string) {
+  return role
+    .trim()
+    .toLowerCase()
+    .replace(/[\u0430]/g, "a")
+    .replace(/[\u0435\u0451]/g, "e")
+    .replace(/[\u043E]/g, "o")
+    .replace(/[\u0440]/g, "p")
+    .replace(/[\u0441]/g, "s")
+    .replace(/[\u0443]/g, "y")
+    .replace(/[\u0445]/g, "x")
+    .replace(/[\u0456]/g, "i")
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function normalizeRoleName(role: string) {
+  const normalizedRole = role.trim().toLowerCase().replace(/\s+/g, " ");
+  const compactRole = toCompactRoleToken(role);
+
+  if (isUserLikeRole(role)) {
+    return "user";
+  }
+
+  if (/^co[\s_-]*owner$/i.test(role.trim())) {
+    return "co-owner";
+  }
+
+  if (compactRole === "admin" || compactRole === "administrator") {
+    return "administrator";
+  }
+
+  if (compactRole === "superadministrator" || compactRole === "superadmin") {
+    return "super administrator";
+  }
+
+  if (compactRole === "coowner") {
+    return "co-owner";
+  }
+
+  if (compactRole === "root" || compactRole === "r00t" || compactRole === "owner") {
+    return "root";
+  }
+
+  if (compactRole === "moderator") {
+    return "moderator";
+  }
+
+  if (
+    compactRole === "sponsor" ||
+    compactRole === "ponsor" ||
+    compactRole === "sponor" ||
+    compactRole === "ponor" ||
+    compactRole === "sp0ns0r" ||
+    compactRole === "p0n0r"
+  ) {
+    return "sponsor";
+  }
+
+  if (compactRole === "user") {
+    return "user";
+  }
+
+  return normalizedRole;
+}
+
+function roleChipStyle(role: string | null | undefined): CSSProperties {
+  const normalizedRole = role ? normalizeRoleName(role) : "user";
+
+  if (
+    normalizedRole === "root" ||
+    normalizedRole === "super administrator" ||
+    normalizedRole === "co-owner"
+  ) {
+    return {
+      borderColor: "#ff3b30",
+      backgroundColor: "#220909",
+      color: "#ffd5d2",
+      boxShadow: "0 0 18px rgba(255,59,48,0.24)",
+    };
+  }
+
+  if (normalizedRole === "administrator") {
+    return {
+      borderColor: "#3b82f6",
+      backgroundColor: "#081222",
+      color: "#d6e7ff",
+      boxShadow: "0 0 18px rgba(59,130,246,0.24)",
+    };
+  }
+
+  if (normalizedRole === "moderator") {
+    return {
+      borderColor: "#4f7cff",
+      backgroundColor: "#0a1328",
+      color: "#d8e3ff",
+      boxShadow: "0 0 18px rgba(79,124,255,0.22)",
+    };
+  }
+
+  if (normalizedRole === "sponsor") {
+    return {
+      borderColor: "#8b5cf6",
+      backgroundColor: "#161022",
+      color: "#e3d8ff",
+      boxShadow: "0 0 18px rgba(139,92,246,0.22)",
+    };
+  }
+
+  return {
+    borderColor: "#22c55e",
+    backgroundColor: "#08170d",
+    color: "#c6f6d5",
+    boxShadow: "0 0 18px rgba(34,197,94,0.2)",
+  };
+}
+
+function highestPriorityRole(roles: string[]) {
+  const normalizedRoles = roles.map((role) => normalizeRoleName(role)).filter(Boolean);
+
+  if (!normalizedRoles.length) {
+    return "user";
+  }
+
+  return [...normalizedRoles].sort((left, right) => {
+    const leftOrder = ROLE_CHIP_ORDER.get(left) ?? Number.MAX_SAFE_INTEGER;
+    const rightOrder = ROLE_CHIP_ORDER.get(right) ?? Number.MAX_SAFE_INTEGER;
+
+    if (leftOrder !== rightOrder) {
+      return leftOrder - rightOrder;
+    }
+
+    return left.localeCompare(right, "en");
+  })[0];
+}
 
 function getFirebaseErrorMessage(error: unknown) {
   const code =
@@ -666,6 +815,20 @@ function HeaderAuth() {
 
   const userLabel = visibleUser ? buildUserLabel(visibleUser) : "Signed in";
   const userInitials = visibleUser ? buildUserInitials(visibleUser) : "SA";
+  const userAccentRole = visibleUser ? highestPriorityRole(visibleUser.roles ?? []) : "user";
+  const userAccentStyle = roleChipStyle(userAccentRole);
+  const userAvatarStyle: CSSProperties = {
+    borderColor: typeof userAccentStyle.borderColor === "string" ? userAccentStyle.borderColor : "#244233",
+  };
+  const userFallbackAvatarStyle: CSSProperties = {
+    borderColor: typeof userAccentStyle.borderColor === "string" ? userAccentStyle.borderColor : "#244233",
+    backgroundColor:
+      typeof userAccentStyle.backgroundColor === "string" ? userAccentStyle.backgroundColor : "#14241c",
+    color: typeof userAccentStyle.color === "string" ? userAccentStyle.color : "#b4eccd",
+  };
+  const userLabelStyle: CSSProperties = {
+    color: typeof userAccentStyle.color === "string" ? userAccentStyle.color : "#d6f2e2",
+  };
 
   return (
     <>
@@ -673,21 +836,29 @@ function HeaderAuth() {
         <div className="flex flex-wrap items-center justify-end gap-2">
           <a
             href={profileHref(visibleUser.profileId)}
-            className="group inline-flex max-w-full items-center gap-3 rounded-full border border-[#1f3b2f] bg-[#0d1713] py-1.5 pr-4 pl-1.5 transition hover:border-[#56c48e]/45 hover:bg-[#102018]"
+            style={userAccentStyle}
+            className="group inline-flex max-w-full items-center gap-3 rounded-full border py-1.5 pr-4 pl-1.5 transition hover:opacity-90"
           >
             {visibleUser.photoURL ? (
               <img
                 src={visibleUser.photoURL}
                 alt={userLabel}
-                className="h-9 w-9 rounded-full border border-[#244233] object-cover"
+                style={userAvatarStyle}
+                className="h-9 w-9 rounded-full border object-cover"
               />
             ) : (
-              <span className="flex h-9 w-9 items-center justify-center rounded-full border border-[#244233] bg-[#14241c] text-[11px] font-black uppercase text-[#b4eccd]">
+              <span
+                style={userFallbackAvatarStyle}
+                className="flex h-9 w-9 items-center justify-center rounded-full border text-[11px] font-black uppercase"
+              >
                 {userInitials}
               </span>
             )}
             <span className="flex min-w-0 items-center">
-              <span className="max-w-[220px] truncate text-[12px] font-medium text-[#d6f2e2]">
+              <span
+                style={userLabelStyle}
+                className="max-w-[220px] truncate text-[12px] font-medium"
+              >
                 {userLabel}
               </span>
             </span>
