@@ -73,7 +73,7 @@ const AUTH_STATE_SETTLED_EVENT = "sakura-auth-state-settled";
 const USER_UPDATE_EVENT = "sakura-user-update";
 const PROFILE_PATH_STORAGE_KEY = "sakura-profile-path";
 const CURRENT_PROFILE_ID_STORAGE_KEY = "sakura-current-profile-id";
-const PROFILE_BUILD_MARKER = "role-colors-v25";
+const PROFILE_BUILD_MARKER = "role-colors-v26";
 const repoBasePath = "/sakura.github.io";
 const restoreProfilePathScript = `
   (function () {
@@ -440,55 +440,46 @@ const withAlpha = (value: string, alpha: number) => {
   return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
 };
 const profileMetaCardStyle = (role: string | null | undefined): CSSProperties => {
-  const badgeStyle = roleBadgeStyle(role ?? "user");
-  const borderColor =
-    typeof badgeStyle.borderColor === "string" ? badgeStyle.borderColor : "#2a2a2a";
-  const accentTextColor =
-    typeof badgeStyle.color === "string" ? badgeStyle.color : "#f3f4f6";
+  const borderColor = "#8b5cf6";
+  const accentTextColor = "#e9ddff";
 
   return {
-    borderColor: withAlpha(borderColor, 0.34),
+    borderColor: withAlpha(borderColor, 0.4),
     backgroundColor: "#090909",
     backgroundImage: [
-      `radial-gradient(circle at top left, ${withAlpha(borderColor, 0.18)} 0%, transparent 58%)`,
-      `linear-gradient(180deg, ${withAlpha(accentTextColor, 0.05)} 0%, rgba(9,9,9,0) 100%)`,
+      `radial-gradient(circle at top left, ${withAlpha(borderColor, 0.14)} 0%, transparent 58%)`,
+      `linear-gradient(180deg, ${withAlpha(accentTextColor, 0.04)} 0%, rgba(9,9,9,0) 100%)`,
     ].join(", "),
-    boxShadow: `inset 0 1px 0 rgba(255,255,255,0.03), 0 0 26px ${withAlpha(borderColor, 0.12)}`,
+    boxShadow: `inset 0 1px 0 rgba(255,255,255,0.03), 0 0 26px ${withAlpha(borderColor, 0.1)}`,
   };
 };
 const profileMetaLabelStyle = (role: string | null | undefined): CSSProperties => {
-  const badgeStyle = roleBadgeStyle(role ?? "user");
-  const borderColor =
-    typeof badgeStyle.borderColor === "string" ? badgeStyle.borderColor : "#6b7280";
+  const borderColor = "#8b5cf6";
 
   return {
-    color: withAlpha(borderColor, 0.82),
-    textShadow: `0 0 14px ${withAlpha(borderColor, 0.16)}`,
+    color: withAlpha(borderColor, 0.78),
+    textShadow: `0 0 14px ${withAlpha(borderColor, 0.12)}`,
   };
 };
 const profileMetaValueStyle = (role: string | null | undefined): CSSProperties => {
-  const badgeStyle = roleBadgeStyle(role ?? "user");
-  const accentTextColor =
-    typeof badgeStyle.color === "string" ? badgeStyle.color : "#f8fafc";
+  const accentTextColor = "#f3edf7";
 
   return {
     color: accentTextColor,
-    fontFamily: "var(--font-geist-sans), Arial, Helvetica, sans-serif",
-    fontWeight: 700,
-    letterSpacing: "0.01em",
-    textShadow: `0 0 18px ${withAlpha(accentTextColor, 0.1)}`,
+    fontFamily: "inherit",
+    fontWeight: 500,
+    letterSpacing: "0",
+    textShadow: "none",
   };
 };
 const profileMetaValuePillStyle = (role: string | null | undefined): CSSProperties => {
-  const badgeStyle = roleBadgeStyle(role ?? "user");
-  const borderColor =
-    typeof badgeStyle.borderColor === "string" ? badgeStyle.borderColor : "#3a2a31";
+  const borderColor = "#8b5cf6";
 
   return {
-    borderColor: withAlpha(borderColor, 0.42),
-    backgroundColor: "#140d11",
-    backgroundImage: `linear-gradient(180deg, ${withAlpha(borderColor, 0.14)} 0%, rgba(20,13,17,0.96) 100%)`,
-    boxShadow: `0 0 22px ${withAlpha(borderColor, 0.14)}, inset 0 1px 0 rgba(255,255,255,0.04)`,
+    borderColor: withAlpha(borderColor, 0.36),
+    backgroundColor: "#120f18",
+    backgroundImage: `linear-gradient(180deg, ${withAlpha(borderColor, 0.1)} 0%, rgba(18,15,24,0.96) 100%)`,
+    boxShadow: `0 0 22px ${withAlpha(borderColor, 0.12)}, inset 0 1px 0 rgba(255,255,255,0.04)`,
   };
 };
 const roleCommentAuthorColor = (role: string | null | undefined) => {
@@ -813,6 +804,42 @@ export default function ProfilePage() {
   const metaLabelStyle = profileMetaLabelStyle(topProfileRole);
   const metaValueStyle = profileMetaValueStyle(topProfileRole);
   const metaValuePillStyle = profileMetaValuePillStyle(topProfileRole);
+  const normalizedProfileRoleSet = new Set(profileRoles.map((role) => normalizeRoleName(role)));
+  const subscriptionSummary = normalizedProfileRoleSet.has("root")
+    ? {
+        title: "Staff Access",
+        badgeRole: "root",
+        status: "Internal",
+        description: "Root access is active for this account. Profile tools and privileged controls are unlocked.",
+      }
+    : normalizedProfileRoleSet.has("co-owner")
+      ? {
+          title: "Co-Owner Access",
+          badgeRole: "co-owner",
+          status: "Priority",
+          description: "Co-owner access is active. Shared management and elevated profile controls are available.",
+        }
+      : normalizedProfileRoleSet.has("sponsor")
+        ? {
+            title: "Sponsor Access",
+            badgeRole: "sponsor",
+            status: "Active",
+            description: "Sponsor access is active for this account. Premium profile styling and future subscription perks can be surfaced here.",
+          }
+        : normalizedProfileRoleSet.has("moderator")
+          ? {
+              title: "Moderator Access",
+              badgeRole: "moderator",
+              status: "Enabled",
+              description: "Moderator access is active. Comment moderation and profile management tools stay available here.",
+            }
+          : {
+              title: "Free Access",
+              badgeRole: "user",
+              status: "Base",
+              description: "This account is currently on the free tier. Future subscription upgrades and perks can be shown in this block.",
+            };
+  const subscriptionBadgeStyle = roleBadgeStyle(subscriptionSummary.badgeRole);
   const shouldShowVerificationBanner = Boolean(
     isOwner &&
       activeProfile?.email &&
@@ -1408,6 +1435,29 @@ export default function ProfilePage() {
             </div>
 
             <div className="flex flex-col gap-6">
+              {isOwner && activeProfile ? <div className="rounded-[32px] border border-[#201517] bg-[radial-gradient(circle_at_top,rgba(255,183,197,0.14),transparent_72%),linear-gradient(180deg,#0d0d0d_0%,#090909_100%)] px-7 py-7 shadow-[0_0_60px_rgba(255,183,197,0.06)]">
+                <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-[#ffb7c5]">Profile Settings</p>
+                <h2 className="mt-3 text-[22px] font-black uppercase tracking-tight text-white">Manage Your Identity</h2>
+                <p className="mt-3 text-sm leading-relaxed text-gray-400">Use this column to update your public profile name, login, avatar, and account-related settings.</p>
+              </div> : null}
+
+              {isOwner && activeProfile ? <div className="rounded-[32px] border border-[#201517] bg-[#0d0d0d] px-7 py-7 shadow-[0_0_60px_rgba(255,183,197,0.06)]">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-[#ffb7c5]">Subscription</p>
+                    <p className="mt-3 text-sm leading-relaxed text-gray-400">Current access tier and future profile perks for this account.</p>
+                  </div>
+                  <span style={{ ...subscriptionBadgeStyle, ...roleBadgeTextStyle }} className="inline-flex shrink-0 rounded-full border px-3 py-1 text-[10px] font-bold">
+                    {subscriptionSummary.status}
+                  </span>
+                </div>
+                <div className="mt-5 rounded-[24px] border border-[#1d1d1d] bg-[radial-gradient(circle_at_top_left,rgba(255,183,197,0.08),transparent_62%),#090909] p-4">
+                  <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-gray-500">Current Tier</p>
+                  <p className="mt-3 text-lg font-bold text-white">{subscriptionSummary.title}</p>
+                  <p className="mt-3 text-xs leading-relaxed text-gray-400">{subscriptionSummary.description}</p>
+                </div>
+              </div> : null}
+
               {isOwner && activeProfile ? <div className="rounded-[32px] border border-[#201517] bg-[#0d0d0d] px-7 py-7 shadow-[0_0_60px_rgba(255,183,197,0.06)]">
                 <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-[#ffb7c5]">Profile Name</p>
                 <p className="mt-3 text-sm leading-relaxed text-gray-400">This name is shown at the top of your profile. It is separate from your login.</p>
