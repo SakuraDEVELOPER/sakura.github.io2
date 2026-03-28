@@ -1444,32 +1444,43 @@ const firebaseModuleScript = `
         (typeof authorSnapshot?.profileId === "number"
           ? \`Profile #\${authorSnapshot.profileId}\`
           : "Member");
-      const commentPayload = {
+      const persistedCommentPayload = {
         profileId,
         authorUid: user.uid,
         authorProfileId:
           typeof authorSnapshot?.profileId === "number" ? authorSnapshot.profileId : null,
         authorName,
-        authorPhotoURL: authorSnapshot?.photoURL ?? user.photoURL ?? null,
-        authorAccentRole: pickCommentAccentRole(authorSnapshot?.roles ?? [], "user"),
         message: normalizedMessage,
         createdAt,
       };
+      const displayCommentPayload = {
+        ...persistedCommentPayload,
+        authorPhotoURL: authorSnapshot?.photoURL ?? user.photoURL ?? null,
+        authorAccentRole: pickCommentAccentRole(authorSnapshot?.roles ?? [], "user"),
+      };
 
       try {
-        await setDoc(commentRef, commentPayload);
+        await setDoc(commentRef, displayCommentPayload);
       } catch (error) {
         if (isPermissionDeniedError(error)) {
-          throw createFirebaseError(
-            "comments/write-denied",
-            "Comments could not be saved. Check Firestore rules for profileComments."
-          );
-        }
+          try {
+            await setDoc(commentRef, persistedCommentPayload);
+          } catch (fallbackError) {
+            if (isPermissionDeniedError(fallbackError)) {
+              throw createFirebaseError(
+                "comments/write-denied",
+                "Comments could not be saved. Check Firestore rules for profileComments."
+              );
+            }
 
-        throw error;
+            throw fallbackError;
+          }
+        } else {
+          throw error;
+        }
       }
 
-      return toStoredProfileComment(commentRef.id, commentPayload);
+      return toStoredProfileComment(commentRef.id, displayCommentPayload);
     };
 
     const deleteProfileComment = async (commentId) => {
