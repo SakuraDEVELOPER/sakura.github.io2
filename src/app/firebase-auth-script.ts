@@ -80,10 +80,10 @@
   const PROFILE_COMMENT_MAX_LENGTH = 280;
   const PROFILE_COMMENT_MEDIA_CONTENT_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
   const PROFILE_COMMENT_MEDIA_MAX_BYTES = 5 * 1024 * 1024;
-  const PROFILE_COMMENT_GIF_MAX_BYTES = 500 * 1024;
+  const PROFILE_COMMENT_GIF_MAX_BYTES = 700 * 1024;
   const PROFILE_COMMENT_MEDIA_MAX_DIMENSION = 960;
   const PROFILE_COMMENT_MEDIA_EXPORT_QUALITY = 0.74;
-  const PROFILE_COMMENT_MEDIA_MAX_DATA_URL_LENGTH = 850000;
+  const PROFILE_COMMENT_MEDIA_MAX_DATA_URL_LENGTH = 1000000;
   const PROFILE_LOOKUP_TIMEOUT_MS = 5000;
   const DISPLAY_NAME_MAX_LENGTH = 48;
   const USER_UPDATE_EVENT = "sakura-user-update";
@@ -242,7 +242,7 @@
       if (file.size > PROFILE_COMMENT_GIF_MAX_BYTES) {
         throw createFirebaseError(
           "comments/media-too-large",
-          "GIF attachments for comments must stay under 500 KB."
+          "GIF attachments for comments must stay under 700 KB."
         );
       }
 

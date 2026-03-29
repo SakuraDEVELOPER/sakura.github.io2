@@ -184,6 +184,10 @@ const getProfileActionErrorMessage = (error: unknown, fallback: string) => {
 
   return error instanceof Error ? error.message : fallback;
 };
+const getCommentWriteDeniedMessage = (hasMedia: boolean) =>
+  hasMedia
+    ? "Comment media could not be saved. If attachments are enabled, allow mediaURL and mediaType in profileComments rules."
+    : "Comment could not be saved. Check Firestore rules for profileComments.";
 const isEmailVerificationLockedForProfile = (user: UserProfile | null | undefined) =>
   Boolean(
     user &&
@@ -1888,7 +1892,11 @@ export default function ProfilePage() {
       }
       setCommentSuccess("Comment posted.");
     } catch (error) {
-      setCommentError(getProfileActionErrorMessage(error, "Could not post this comment."));
+      setCommentError(
+        getErrorCode(error) === "comments/write-denied"
+          ? getCommentWriteDeniedMessage(Boolean(commentMediaFile))
+          : getProfileActionErrorMessage(error, "Could not post this comment.")
+      );
     } finally {
       setIsCommentSubmitting(false);
     }
@@ -2041,7 +2049,14 @@ export default function ProfilePage() {
       }
       setCommentSuccess("Comment updated.");
     } catch (error) {
-      setCommentError(getProfileActionErrorMessage(error, "Could not update this comment."));
+      setCommentError(
+        getErrorCode(error) === "comments/write-denied"
+          ? getCommentWriteDeniedMessage(
+              Boolean(editingCommentMediaFile) ||
+              Boolean(currentComment?.mediaURL && !isEditingCommentMediaRemoved)
+            )
+          : getProfileActionErrorMessage(error, "Could not update this comment.")
+      );
     } finally {
       setIsCommentUpdating(false);
     }
