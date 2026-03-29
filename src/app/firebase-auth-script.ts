@@ -16,9 +16,11 @@
         {
           createUserWithEmailAndPassword,
           deleteUser,
+          EmailAuthProvider,
           GoogleAuthProvider,
           getAuth,
           onAuthStateChanged,
+          reauthenticateWithCredential,
           sendEmailVerification,
           signInAnonymously,
           signInWithPopup,
@@ -1548,11 +1550,53 @@
       return stopPresenceTracking;
     };
 
-    const updateUsername = async (nextUsername) => {
+    const updateUsername = async (nextUsername, currentPassword = "") => {
       const user = auth.currentUser;
 
       if (!user || user.isAnonymous) {
         throw createFirebaseError("auth/no-current-user", "Sign in again to update your username.");
+      }
+
+      const providerIds = getProviderIds(user);
+
+      if (providerIds.includes("password")) {
+        const email = typeof user.email === "string" ? user.email.trim() : "";
+
+        if (!currentPassword) {
+          throw createFirebaseError(
+            "auth/current-password-required",
+            "Enter your current password to change the login."
+          );
+        }
+
+        if (!email) {
+          throw createFirebaseError(
+            "auth/current-password-required",
+            "This account cannot verify the current password right now."
+          );
+        }
+
+        try {
+          await reauthenticateWithCredential(
+            user,
+            EmailAuthProvider.credential(email, currentPassword)
+          );
+        } catch (error) {
+          const errorCode = getErrorCode(error);
+
+          if (
+            errorCode === "auth/wrong-password" ||
+            errorCode === "auth/invalid-credential" ||
+            errorCode === "auth/user-mismatch"
+          ) {
+            throw createFirebaseError(
+              "auth/current-password-invalid",
+              "Current password is incorrect."
+            );
+          }
+
+          throw error;
+        }
       }
 
       const usernameDetails = await resolveAvailableLogin(nextUsername, user.uid);

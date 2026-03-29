@@ -45,7 +45,7 @@ type Bridge = {
   deleteProfileComment: (commentId: string) => Promise<string | null>;
   resendVerificationEmail: () => Promise<UserProfile | null>;
   updateDisplayName: (displayName: string) => Promise<UserProfile | null>;
-  updateUsername: (username: string) => Promise<UserProfile | null>;
+  updateUsername: (username: string, currentPassword?: string) => Promise<UserProfile | null>;
   adminUpdateProfileDisplayName: (profileId: number, displayName: string) => Promise<UserProfile | null>;
   adminUpdateProfileLogin: (profileId: number, login: string) => Promise<UserProfile | null>;
   adminSetProfileBan: (profileId: number, isBanned: boolean) => Promise<UserProfile | null>;
@@ -74,7 +74,7 @@ const AUTH_STATE_SETTLED_EVENT = "sakura-auth-state-settled";
 const USER_UPDATE_EVENT = "sakura-user-update";
 const PROFILE_PATH_STORAGE_KEY = "sakura-profile-path";
 const CURRENT_PROFILE_ID_STORAGE_KEY = "sakura-current-profile-id";
-const PROFILE_BUILD_MARKER = "role-colors-v33";
+const PROFILE_BUILD_MARKER = "role-colors-v34";
 const repoBasePath = "/sakura.github.io";
 const restoreProfilePathScript = `
   (function () {
@@ -130,6 +130,14 @@ const getProfileActionErrorMessage = (error: unknown, fallback: string) => {
 
   if (code === "avatar/action-timeout") {
     return "Avatar action took too long. Try a smaller file.";
+  }
+
+  if (code === "auth/current-password-required") {
+    return "Enter your current password to change the login.";
+  }
+
+  if (code === "auth/current-password-invalid") {
+    return "Current password is incorrect.";
   }
 
   return error instanceof Error ? error.message : fallback;
@@ -696,9 +704,11 @@ export default function ProfilePage() {
   const [displayNameError, setDisplayNameError] = useState<string | null>(null);
   const [displayNameSuccess, setDisplayNameSuccess] = useState<string | null>(null);
   const [usernameInput, setUsernameInput] = useState("");
+  const [usernamePasswordInput, setUsernamePasswordInput] = useState("");
   const [isUsernameSaving, setIsUsernameSaving] = useState(false);
   const [usernameError, setUsernameError] = useState<string | null>(null);
   const [usernameSuccess, setUsernameSuccess] = useState<string | null>(null);
+  const [isProfileControlsOpen, setIsProfileControlsOpen] = useState(false);
   const [draftRoles, setDraftRoles] = useState<string[]>([]);
   const [isRolesSaving, setIsRolesSaving] = useState(false);
   const [rolesError, setRolesError] = useState<string | null>(null);
@@ -813,6 +823,9 @@ export default function ProfilePage() {
   const isOwner = Boolean(visibleCurrentUser && profile && visibleCurrentUser.uid === profile.uid);
   const activeProfile = profile;
   const hasUsername = Boolean(activeProfile?.login?.trim());
+  const requiresUsernamePasswordConfirmation = Boolean(
+    isOwner && visibleCurrentUser?.providerIds?.includes("password")
+  );
   const profileRoles = activeProfile?.roles?.length ? normalizeRoleSelection(activeProfile.roles) : ["user"];
   const normalizedProfileRoles = profileRoles;
   const topProfileRole = profileRoles[0] ?? null;
@@ -871,6 +884,11 @@ export default function ProfilePage() {
     !authError &&
     !activeProfile &&
     (!authReady || !authStateSettled || isProfileLoading || (requestedProfileId !== null && !profileError));
+
+  useEffect(() => {
+    setIsProfileControlsOpen(false);
+    setUsernamePasswordInput("");
+  }, [activeProfile?.profileId, isOwner]);
 
   useEffect(() => {
     if (!hasHydrated || !shouldShowPendingState) {
@@ -1273,6 +1291,11 @@ export default function ProfilePage() {
       return;
     }
 
+    if (isOwner && requiresUsernamePasswordConfirmation && !usernamePasswordInput) {
+      setUsernameError("Enter your current password to change the login.");
+      return;
+    }
+
     setUsernameError(null);
     setUsernameSuccess(null);
     setIsUsernameSaving(true);
@@ -1281,12 +1304,18 @@ export default function ProfilePage() {
       let snapshot: UserProfile | null = null;
 
       if (isOwner) {
-        snapshot = await bridge.updateUsername(nextUsername);
+        snapshot = await bridge.updateUsername(
+          nextUsername,
+          requiresUsernamePasswordConfirmation ? usernamePasswordInput : undefined
+        );
       } else if (canOpenAdminPanel && activeProfile?.profileId) {
         snapshot = await bridge.adminUpdateProfileLogin(activeProfile.profileId, nextUsername);
       }
 
       applyUpdatedProfileSnapshot(snapshot);
+      if (isOwner) {
+        setUsernamePasswordInput("");
+      }
       setUsernameSuccess(isOwner ? "Login saved." : "Login updated.");
     } catch (error) {
       setUsernameError(error instanceof Error ? error.message : "Could not save login.");
@@ -1478,9 +1507,14 @@ export default function ProfilePage() {
                 <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-[#ffb7c5]">Profile Settings</p>
                 <h2 className="mt-3 text-[22px] font-black uppercase tracking-tight text-white">Manage Your Identity</h2>
                 <p className="mt-3 text-sm leading-relaxed text-gray-400">Use this column to update your public profile name, login, avatar, and account-related settings.</p>
+                <div className="mt-5 flex flex-wrap items-center gap-3">
+                  <button type="button" onClick={() => setIsProfileControlsOpen((currentValue) => !currentValue)} className="inline-flex items-center justify-center rounded-full border border-[#ffb7c5]/30 bg-[#140d11] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-[#ffb7c5] transition hover:border-[#ffb7c5]/45 hover:text-white">
+                    {isProfileControlsOpen ? "Hide Controls" : "Open Controls"}
+                  </button>
+                </div>
               </div> : null}
 
-              {isOwner && activeProfile ? <div className="rounded-[32px] border border-[#201517] bg-[#0d0d0d] px-7 py-7 shadow-[0_0_60px_rgba(255,183,197,0.06)]">
+              {isOwner && activeProfile && isProfileControlsOpen ? <div className="rounded-[32px] border border-[#201517] bg-[#0d0d0d] px-7 py-7 shadow-[0_0_60px_rgba(255,183,197,0.06)]">
                 <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-[#ffb7c5]">Profile Name</p>
                 <p className="mt-3 text-sm leading-relaxed text-gray-400">This name is shown at the top of your profile. It is separate from your login.</p>
                 <div className="mt-5">
@@ -1501,7 +1535,7 @@ export default function ProfilePage() {
                 {displayNameSuccess ? <p className="mt-3 text-xs leading-relaxed text-[#8ce5b2]">{displayNameSuccess}</p> : null}
               </div> : null}
 
-              {isOwner && activeProfile ? <div className="rounded-[32px] border border-[#201517] bg-[#0d0d0d] px-7 py-7 shadow-[0_0_60px_rgba(255,183,197,0.06)]">
+              {isOwner && activeProfile && isProfileControlsOpen ? <div className="rounded-[32px] border border-[#201517] bg-[#0d0d0d] px-7 py-7 shadow-[0_0_60px_rgba(255,183,197,0.06)]">
                 <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-[#ffb7c5]">{hasUsername ? "Login" : "Create Login"}</p>
                 <p className="mt-3 text-sm leading-relaxed text-gray-400">{hasUsername ? "This login is shown below your profile name and is used for sign-in." : "This account does not have a login yet. Create one so it appears below your profile name and can be used for sign-in."}</p>
                 <div className="mt-5">
@@ -1515,6 +1549,17 @@ export default function ProfilePage() {
                   </label>
                   <p className="mt-2 text-xs leading-relaxed text-gray-500">Login without spaces. Letters, numbers, `.`, `_`, and `-` are supported.</p>
                 </div>
+                {requiresUsernamePasswordConfirmation ? <div className="mt-5">
+                  <label className="block">
+                    <span className="mb-2 block font-mono text-[10px] uppercase tracking-[0.28em] text-gray-500">Current Password</span>
+                    <input type="password" value={usernamePasswordInput} autoComplete="current-password" onChange={(event) => {
+                      setUsernamePasswordInput(event.target.value);
+                      setUsernameError(null);
+                      setUsernameSuccess(null);
+                    }} className="w-full rounded-2xl border border-[#232323] bg-[#090909] px-4 py-3 text-sm text-white outline-none transition placeholder:text-gray-600 focus:border-[#ffb7c5]/55" placeholder="Enter current password" />
+                  </label>
+                  <p className="mt-2 text-xs leading-relaxed text-gray-500">Required before changing the login for password-based accounts.</p>
+                </div> : null}
                 <div className="mt-5 flex flex-wrap items-center gap-3">
                   <button type="button" onClick={handleUsernameSave} disabled={isUsernameSaving} className="inline-flex items-center justify-center rounded-full border border-[#ffb7c5]/30 bg-[#ffb7c5] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-black transition hover:bg-[#ffc8d3] disabled:cursor-not-allowed disabled:opacity-60">{isUsernameSaving ? "Saving..." : "Save Login"}</button>
                 </div>
@@ -1522,7 +1567,7 @@ export default function ProfilePage() {
                 {usernameSuccess ? <p className="mt-3 text-xs leading-relaxed text-[#8ce5b2]">{usernameSuccess}</p> : null}
               </div> : null}
 
-              {isOwner && shouldShowVerificationBanner ? <div className="rounded-[32px] border border-[#4d3024] bg-[linear-gradient(180deg,#1a110d_0%,#120d0a_100%)] px-7 py-7 shadow-[0_0_60px_rgba(255,183,197,0.06)]">
+              {isOwner && isProfileControlsOpen && shouldShowVerificationBanner ? <div className="rounded-[32px] border border-[#4d3024] bg-[linear-gradient(180deg,#1a110d_0%,#120d0a_100%)] px-7 py-7 shadow-[0_0_60px_rgba(255,183,197,0.06)]">
                 <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-[#ffb7c5]">Email not verified</p>
                 <p className="mt-3 text-sm leading-relaxed text-[#f3d2c5]">Подтвердите почту, чтобы сохранить доступ к аккаунту и восстановлению входа.</p>
                 <div className="mt-5 flex flex-wrap items-center gap-3">
@@ -1557,7 +1602,7 @@ export default function ProfilePage() {
                 {rolesSuccess ? <p className="mt-3 text-xs leading-relaxed text-[#8ce5b2]">{rolesSuccess}</p> : null}
               </div> : null}
 
-              {isOwner ? <div className="rounded-[32px] border border-[#201517] bg-[#0d0d0d] px-7 py-7 shadow-[0_0_60px_rgba(255,183,197,0.06)]">
+              {isOwner && isProfileControlsOpen ? <div className="rounded-[32px] border border-[#201517] bg-[#0d0d0d] px-7 py-7 shadow-[0_0_60px_rgba(255,183,197,0.06)]">
                 <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-[#ffb7c5]">Avatar</p>
                 <div className="mt-5 rounded-[24px] border border-[#1d1d1d] bg-[#090909] p-4">
                   <p className="text-sm font-semibold text-white">{activeProfile.photoURL ? "Custom Avatar" : "Generated Avatar"}</p>
