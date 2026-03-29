@@ -61,6 +61,7 @@
   const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
   const AVATAR_INLINE_SIZE = 160;
   const AVATAR_EXPORT_QUALITY = 0.72;
+  const PASSTHROUGH_AVATAR_CONTENT_TYPES = new Set(["image/gif", "image/webp"]);
   const PROFILE_COMMENT_MAX_LENGTH = 280;
   const PROFILE_LOOKUP_TIMEOUT_MS = 5000;
   const DISPLAY_NAME_MAX_LENGTH = 48;
@@ -150,6 +151,10 @@
   };
 
   const createInlineAvatarDataUrl = async (file) => {
+    if (PASSTHROUGH_AVATAR_CONTENT_TYPES.has(file.type)) {
+      return readFileAsDataUrl(file);
+    }
+
     const image = await loadAvatarSource(file);
     const width = image.naturalWidth || image.width || 0;
     const height = image.naturalHeight || image.height || 0;
