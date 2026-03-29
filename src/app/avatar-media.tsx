@@ -5,7 +5,7 @@
 import { useEffect, useState, type CSSProperties } from "react";
 
 export const AVATAR_FILE_ACCEPT =
-  ".png,.jpg,.jpeg,.gif";
+  ".png,.jpg,.jpeg,.gif,.webp,.mp4,.webm";
 
 export const AVATAR_CONTENT_TYPES = new Set([
   "image/jpeg",
@@ -23,7 +23,7 @@ export const PASSTHROUGH_AVATAR_CONTENT_TYPES = new Set([
   "video/webm",
 ]);
 
-export const MAX_PASSTHROUGH_AVATAR_BYTES = 512 * 1024;
+export const MAX_PASSTHROUGH_AVATAR_BYTES = 700 * 1024;
 
 export const isVideoAvatarSource = (value: string | null | undefined) => {
   if (typeof value !== "string") {
