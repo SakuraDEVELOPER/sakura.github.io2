@@ -432,6 +432,7 @@
         .filter((role) => typeof role === "string")
         .map((role) => normalizeRoleName(role))
         .filter(Boolean)
+        .filter((role) => !REMOVED_ROLE_NAMES.has(role))
       : [];
     const uniqueRoles = normalizedRoles.filter(
       (role, index, entries) => index === entries.findIndex((candidate) => candidate === role)

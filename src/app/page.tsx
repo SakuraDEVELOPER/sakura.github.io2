@@ -105,6 +105,8 @@ type AuthUserSnapshot = {
   profileId: number | null;
   photoURL: string | null;
   roles: string[];
+  isBanned?: boolean;
+  bannedAt?: string | null;
   providerIds: string[];
   creationTime: string | null;
   lastSignInTime: string | null;
@@ -161,6 +163,7 @@ const USER_UPDATE_EVENT = "sakura-user-update";
 const LOGIN_PATTERN = /^[A-Za-zА-Яа-яЁё0-9._-]+$/;
 
 const ROLE_CHIP_ORDER = new Map([
+  ["banned", 0],
   ["root", 0],
   ["co-owner", 1],
   ["super administrator", 2],
@@ -168,6 +171,12 @@ const ROLE_CHIP_ORDER = new Map([
   ["sponsor", 4],
   ["moderator", 5],
   ["user", 6],
+]);
+const REMOVED_ROLE_NAMES = new Set([
+  "super administrator",
+  "administrator",
+  "tester",
+  "subscriber",
 ]);
 
 function isUserLikeRole(role: string) {
@@ -222,6 +231,13 @@ function normalizeRoleName(role: string) {
   }
 
   if (
+    compactRole === "banned" ||
+    compactRole === "ban"
+  ) {
+    return "banned";
+  }
+
+  if (
     compactRole === "sponsor" ||
     compactRole === "ponsor" ||
     compactRole === "sponor" ||
@@ -241,6 +257,15 @@ function normalizeRoleName(role: string) {
 
 function roleChipStyle(role: string | null | undefined): CSSProperties {
   const normalizedRole = role ? normalizeRoleName(role) : "user";
+
+  if (normalizedRole === "banned") {
+    return {
+      borderColor: "#ff3b30",
+      backgroundColor: "#220909",
+      color: "#ffd5d2",
+      boxShadow: "0 0 18px rgba(255,59,48,0.24)",
+    };
+  }
 
   if (
     normalizedRole === "root" ||
@@ -291,7 +316,10 @@ function roleChipStyle(role: string | null | undefined): CSSProperties {
 }
 
 function highestPriorityRole(roles: string[]) {
-  const normalizedRoles = roles.map((role) => normalizeRoleName(role)).filter(Boolean);
+  const normalizedRoles = roles
+    .map((role) => normalizeRoleName(role))
+    .filter(Boolean)
+    .filter((role) => !REMOVED_ROLE_NAMES.has(role));
 
   if (!normalizedRoles.length) {
     return "user";
@@ -843,7 +871,11 @@ function HeaderAuth() {
   const resolvedProfileHref = profileHref(resolvedProfileId);
   const userLabel = visibleUser ? buildUserLabel(visibleUser) : "Signed in";
   const userInitials = visibleUser ? buildUserInitials(visibleUser) : "SA";
-  const userAccentRole = visibleUser ? highestPriorityRole(visibleUser.roles ?? []) : "user";
+  const userAccentRole = visibleUser
+    ? visibleUser.isBanned
+      ? "banned"
+      : highestPriorityRole(visibleUser.roles ?? [])
+    : "user";
   const userAccentStyle = roleChipStyle(userAccentRole);
   const userAvatarStyle: CSSProperties = {
     borderColor: typeof userAccentStyle.borderColor === "string" ? userAccentStyle.borderColor : "#244233",

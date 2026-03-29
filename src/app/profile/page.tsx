@@ -76,7 +76,7 @@ const AUTH_STATE_SETTLED_EVENT = "sakura-auth-state-settled";
 const USER_UPDATE_EVENT = "sakura-user-update";
 const PROFILE_PATH_STORAGE_KEY = "sakura-profile-path";
 const CURRENT_PROFILE_ID_STORAGE_KEY = "sakura-current-profile-id";
-const PROFILE_BUILD_MARKER = "role-colors-v37";
+const PROFILE_BUILD_MARKER = "role-colors-v38";
 const repoBasePath = "/sakura.github.io";
 const restoreProfilePathScript = `
   (function () {
@@ -267,6 +267,10 @@ const normalizeRoleName = (role: string) => {
     return "subscriber";
   }
 
+  if (compactRole === "banned" || compactRole === "ban") {
+    return "banned";
+  }
+
   if (compactRole === "user") {
     return "user";
   }
@@ -331,6 +335,10 @@ const roleDisplayLabel = (role: string) => {
     return "Subscriber";
   }
 
+  if (normalizedRole === "banned") {
+    return "Banned";
+  }
+
   if (normalizedRole === "user") {
     return "User";
   }
@@ -355,6 +363,15 @@ const roleBadgeTextStyle: CSSProperties = {
 };
 const roleBadgeStyle = (role: string): CSSProperties => {
   const normalizedRole = normalizeRoleName(role);
+
+  if (normalizedRole === "banned") {
+    return {
+      borderColor: "#ff3b30",
+      backgroundColor: "#220909",
+      color: "#ffd5d2",
+      boxShadow: "0 0 18px rgba(255,59,48,0.28)",
+    };
+  }
 
   if (
     normalizedRole === "root" ||
@@ -512,6 +529,10 @@ const profileMetaValuePillStyle = (role: string | null | undefined): CSSProperti
 const roleCommentAuthorColor = (role: string | null | undefined) => {
   const normalizedRole = normalizeRoleName(role ?? "");
 
+  if (normalizedRole === "banned") {
+    return "#ff5a54";
+  }
+
   if (normalizedRole === "root") {
     return "#ff5a54";
   }
@@ -568,6 +589,7 @@ const ROLE_DISPLAY_ORDER = new Map(
   EDITABLE_ROLE_OPTIONS.map((role, index) => [normalizeRoleName(role), index])
 );
 const COMMENT_AUTHOR_ROLE_ORDER = new Map([
+  ["banned", 0],
   ["root", 0],
   ["co-owner", 1],
   ["super administrator", 2],
@@ -603,7 +625,10 @@ const normalizeRoleSelection = (roles: string[]) => {
 };
 const pickCommentAuthorAccentRole = (roles: string[] | null | undefined) => {
   const nextRoles = Array.isArray(roles)
-    ? roles.map((role) => normalizeRoleName(role)).filter(Boolean)
+    ? roles
+        .map((role) => normalizeRoleName(role))
+        .filter(Boolean)
+        .filter((role) => !REMOVED_ROLE_NAMES.has(role))
     : [];
   const uniqueRoles = nextRoles.filter(
     (role, index, entries) => index === entries.findIndex((candidate) => candidate === role)
@@ -629,6 +654,15 @@ const canModerateComments = (roles: string[]) =>
   normalizeRoleSelection(roles).some((role) =>
     COMMENT_MODERATOR_ROLE_NAMES.has(normalizeRoleName(role))
   );
+const deriveVisibleProfileRoles = (
+  profile: Pick<UserProfile, "roles" | "isBanned"> | null | undefined
+) => {
+  if (profile?.isBanned === true) {
+    return ["banned"];
+  }
+
+  return normalizeRoleSelection(profile?.roles ?? []);
+};
 const profileNameOf = (user: Pick<UserProfile, "login" | "displayName" | "profileId">) =>
   user.displayName?.trim() ||
   user.login?.trim() ||
@@ -830,7 +864,7 @@ export default function ProfilePage() {
   const requiresUsernamePasswordConfirmation = Boolean(
     isOwner && visibleCurrentUser?.providerIds?.includes("password")
   );
-  const profileRoles = activeProfile?.roles?.length ? normalizeRoleSelection(activeProfile.roles) : ["user"];
+  const profileRoles = deriveVisibleProfileRoles(activeProfile);
   const normalizedProfileRoles = profileRoles;
   const topProfileRole = profileRoles[0] ?? null;
   const profileHeadlineStyle = roleHeadlineStyle(topProfileRole);
@@ -839,7 +873,15 @@ export default function ProfilePage() {
   const metaValueStyle = profileMetaValueStyle(topProfileRole);
   const metaValuePillStyle = profileMetaValuePillStyle(topProfileRole);
   const normalizedProfileRoleSet = new Set(profileRoles.map((role) => normalizeRoleName(role)));
-  const subscriptionSummary = normalizedProfileRoleSet.has("root")
+  const isCurrentAccountBanned = visibleCurrentUser?.isBanned === true;
+  const subscriptionSummary = activeProfile?.isBanned === true
+    ? {
+        title: "Account Banned",
+        badgeRole: "banned",
+        status: "Restricted",
+        description: "This account is blocked. Sign-in actions, profile changes, and new activity are disabled until it is unbanned.",
+      }
+    : normalizedProfileRoleSet.has("root")
     ? {
         title: "Cheat Access",
         badgeRole: "root",
@@ -876,6 +918,7 @@ export default function ProfilePage() {
   const subscriptionBadgeStyle = roleBadgeStyle(subscriptionSummary.badgeRole);
   const shouldShowVerificationBanner = Boolean(
     isOwner &&
+      !activeProfile?.isBanned &&
       activeProfile?.email &&
       activeProfile.emailVerified === false &&
       activeProfile.verificationRequired !== false
@@ -990,11 +1033,16 @@ export default function ProfilePage() {
     const resolvedCommentAuthorProfile = resolveCommentAuthorProfile(comment);
 
     if (resolvedCommentAuthorProfile) {
+      if (resolvedCommentAuthorProfile.isBanned === true) {
+        return "banned";
+      }
+
       return pickCommentAuthorAccentRole(resolvedCommentAuthorProfile.roles) ?? null;
     }
 
     if (comment.authorAccentRole) {
-      return normalizeRoleName(comment.authorAccentRole) || null;
+      const normalizedRole = normalizeRoleName(comment.authorAccentRole);
+      return normalizedRole && !REMOVED_ROLE_NAMES.has(normalizedRole) ? normalizedRole : null;
     }
 
     return null;
@@ -1714,16 +1762,22 @@ export default function ProfilePage() {
             <div className="flex w-full flex-col gap-6 lg:w-[42.5%] lg:flex-none">
               {isOwner && activeProfile ? <div className="rounded-[32px] border border-[#201517] bg-[radial-gradient(circle_at_top,rgba(255,183,197,0.14),transparent_72%),linear-gradient(180deg,#0d0d0d_0%,#090909_100%)] px-7 py-7 shadow-[0_0_60px_rgba(255,183,197,0.06)]">
                 <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-[#ffb7c5]">Profile Settings</p>
-                <h2 className="mt-3 text-[22px] font-black uppercase tracking-tight text-white">Manage Your Identity</h2>
-                <p className="mt-3 text-sm leading-relaxed text-gray-400">Use this column to update your public profile name, login, avatar, and account-related settings.</p>
-                <div className="mt-5 flex flex-wrap items-center gap-3">
+                <h2 className="mt-3 text-[22px] font-black uppercase tracking-tight text-white">
+                  {activeProfile.isBanned ? "Account Access Restricted" : "Manage Your Identity"}
+                </h2>
+                <p className="mt-3 text-sm leading-relaxed text-gray-400">
+                  {activeProfile.isBanned
+                    ? "This account is banned. Profile changes and new actions stay locked until a root account removes the ban."
+                    : "Use this column to update your public profile name, login, avatar, and account-related settings."}
+                </p>
+                {!activeProfile.isBanned ? <div className="mt-5 flex flex-wrap items-center gap-3">
                   <button type="button" onClick={() => setIsProfileControlsOpen((currentValue) => !currentValue)} className="inline-flex items-center justify-center rounded-full border border-[#ffb7c5]/30 bg-[#140d11] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-[#ffb7c5] transition hover:border-[#ffb7c5]/45 hover:text-white">
                     {isProfileControlsOpen ? "Hide Controls" : "Open Controls"}
                   </button>
-                </div>
+                </div> : null}
               </div> : null}
 
-              {isOwner && activeProfile && isProfileControlsOpen ? <div className="rounded-[32px] border border-[#201517] bg-[#0d0d0d] px-7 py-7 shadow-[0_0_60px_rgba(255,183,197,0.06)]">
+              {isOwner && activeProfile && isProfileControlsOpen && !activeProfile.isBanned ? <div className="rounded-[32px] border border-[#201517] bg-[#0d0d0d] px-7 py-7 shadow-[0_0_60px_rgba(255,183,197,0.06)]">
                 <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-[#ffb7c5]">Profile Name</p>
                 <p className="mt-3 text-sm leading-relaxed text-gray-400">This name is shown at the top of your profile. It is separate from your login.</p>
                 <div className="mt-5">
@@ -1744,7 +1798,7 @@ export default function ProfilePage() {
                 {displayNameSuccess ? <p className="mt-3 text-xs leading-relaxed text-[#8ce5b2]">{displayNameSuccess}</p> : null}
               </div> : null}
 
-              {isOwner && activeProfile && isProfileControlsOpen ? <div className="rounded-[32px] border border-[#201517] bg-[#0d0d0d] px-7 py-7 shadow-[0_0_60px_rgba(255,183,197,0.06)]">
+              {isOwner && activeProfile && isProfileControlsOpen && !activeProfile.isBanned ? <div className="rounded-[32px] border border-[#201517] bg-[#0d0d0d] px-7 py-7 shadow-[0_0_60px_rgba(255,183,197,0.06)]">
                 <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-[#ffb7c5]">{hasUsername ? "Login" : "Create Login"}</p>
                 <p className="mt-3 text-sm leading-relaxed text-gray-400">{hasUsername ? "This login is shown below your profile name and is used for sign-in." : "This account does not have a login yet. Create one so it appears below your profile name and can be used for sign-in."}</p>
                 <div className="mt-5">
@@ -1811,7 +1865,7 @@ export default function ProfilePage() {
                 {rolesSuccess ? <p className="mt-3 text-xs leading-relaxed text-[#8ce5b2]">{rolesSuccess}</p> : null}
               </div> : null}
 
-              {isOwner && isProfileControlsOpen ? <div className="rounded-[32px] border border-[#201517] bg-[#0d0d0d] px-7 py-7 shadow-[0_0_60px_rgba(255,183,197,0.06)]">
+              {isOwner && isProfileControlsOpen && !activeProfile?.isBanned ? <div className="rounded-[32px] border border-[#201517] bg-[#0d0d0d] px-7 py-7 shadow-[0_0_60px_rgba(255,183,197,0.06)]">
                 <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-[#ffb7c5]">Avatar</p>
                 <div className="mt-5 rounded-[24px] border border-[#1d1d1d] bg-[#090909] p-4">
                   <p className="text-sm font-semibold text-white">{activeProfile.photoURL ? "Custom Avatar" : "Generated Avatar"}</p>
@@ -1832,7 +1886,7 @@ export default function ProfilePage() {
                 <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-[#ffb7c5]">Profile Comments</p>
                 <p className="mt-3 text-sm leading-relaxed text-gray-400">A public wall for this profile. Only signed-in users can leave a message.</p>
 
-                {visibleCurrentUser ? (
+                {visibleCurrentUser && !isCurrentAccountBanned ? (
                   <form onSubmit={handleCommentSubmit} className="mt-5">
                     <label className="block">
                       <span className="mb-2 block font-mono text-[10px] uppercase tracking-[0.28em] text-gray-500">New Comment</span>
@@ -1848,6 +1902,10 @@ export default function ProfilePage() {
                     {commentError ? <p className="mt-3 text-xs leading-relaxed text-[#ff9aa9]">{commentError}</p> : null}
                     {commentSuccess ? <p className="mt-3 text-xs leading-relaxed text-[#8ce5b2]">{commentSuccess}</p> : null}
                   </form>
+                ) : visibleCurrentUser && isCurrentAccountBanned ? (
+                  <div className="mt-5 rounded-[24px] border border-red-400/20 bg-red-500/10 px-4 py-4">
+                    <p className="text-sm leading-relaxed text-red-100/85">This account has been banned by an administrator. Posting and profile actions are disabled.</p>
+                  </div>
                 ) : (
                   <div className="mt-5 rounded-[24px] border border-[#1d1d1d] bg-[#090909] px-4 py-4">
                     <p className="text-sm leading-relaxed text-gray-400">Sign in to leave a comment on this profile. Guests can read comments, but cannot post.</p>
