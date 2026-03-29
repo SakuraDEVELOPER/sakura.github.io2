@@ -67,7 +67,7 @@
   const LOGIN_MAX_LENGTH = 24;
   const LOGIN_MIN_LENGTH = 3;
   const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
-  const MAX_PASSTHROUGH_AVATAR_BYTES = 512 * 1024;
+  const MAX_PASSTHROUGH_AVATAR_BYTES = 700 * 1024;
   const AVATAR_STORAGE_UPLOAD_TIMEOUT_MS = 2500;
   const STORAGE_AVATAR_UPLOADS_ENABLED = false;
   const AVATAR_INLINE_SIZE = 160;
@@ -2107,7 +2107,7 @@
       if (PASSTHROUGH_AVATAR_CONTENT_TYPES.has(file.type) && file.size > MAX_PASSTHROUGH_AVATAR_BYTES) {
         throw createFirebaseError(
           "storage/file-too-large",
-          "GIF, WEBP, MP4, and WEBM avatars must be 512 KB or smaller."
+          "GIF, WEBP, MP4, and WEBM avatars must be 700 KB or smaller."
         );
       }
 
@@ -2452,7 +2452,7 @@
       if (PASSTHROUGH_AVATAR_CONTENT_TYPES.has(file.type) && file.size > MAX_PASSTHROUGH_AVATAR_BYTES) {
         throw createFirebaseError(
           "storage/file-too-large",
-          "GIF, WEBP, MP4, and WEBM avatars must be 512 KB or smaller."
+          "GIF, WEBP, MP4, and WEBM avatars must be 700 KB or smaller."
         );
       }
 
