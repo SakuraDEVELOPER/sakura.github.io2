@@ -40,6 +40,7 @@ type ProfileComment = {
 
 type Bridge = {
   getProfileById: (profileId: number) => Promise<UserProfile | null>;
+  getProfileByAuthorName: (authorName: string) => Promise<UserProfile | null>;
   getProfileComments: (profileId: number) => Promise<ProfileComment[]>;
   addProfileComment: (profileId: number, message: string) => Promise<ProfileComment>;
   deleteProfileComment: (commentId: string) => Promise<string | null>;
@@ -74,7 +75,7 @@ const AUTH_STATE_SETTLED_EVENT = "sakura-auth-state-settled";
 const USER_UPDATE_EVENT = "sakura-user-update";
 const PROFILE_PATH_STORAGE_KEY = "sakura-profile-path";
 const CURRENT_PROFILE_ID_STORAGE_KEY = "sakura-current-profile-id";
-const PROFILE_BUILD_MARKER = "role-colors-v36";
+const PROFILE_BUILD_MARKER = "role-colors-v37";
 const repoBasePath = "/sakura.github.io";
 const restoreProfilePathScript = `
   (function () {
@@ -719,6 +720,7 @@ export default function ProfilePage() {
   const [banSuccess, setBanSuccess] = useState<string | null>(null);
   const [comments, setComments] = useState<ProfileComment[]>([]);
   const [commentAuthorProfiles, setCommentAuthorProfiles] = useState<Record<number, UserProfile>>({});
+  const [commentAuthorProfilesByCommentId, setCommentAuthorProfilesByCommentId] = useState<Record<string, UserProfile>>({});
   const [isCommentsLoading, setIsCommentsLoading] = useState(false);
   const [commentsError, setCommentsError] = useState<string | null>(null);
   const [commentInput, setCommentInput] = useState("");
@@ -959,11 +961,17 @@ export default function ProfilePage() {
     return userKeys.some((value) => normalizeCommentAuthorKey(value) === authorKey);
   };
   const resolveCommentAuthorProfile = (comment: ProfileComment) => {
-    if (typeof comment.authorProfileId === "number") {
-      const cachedCommentAuthorProfile = commentAuthorProfiles[comment.authorProfileId];
+    const cachedCommentAuthorProfile = commentAuthorProfilesByCommentId[comment.id];
 
-      if (cachedCommentAuthorProfile) {
-        return cachedCommentAuthorProfile;
+    if (cachedCommentAuthorProfile) {
+      return cachedCommentAuthorProfile;
+    }
+
+    if (typeof comment.authorProfileId === "number") {
+      const cachedCommentAuthorProfileByProfileId = commentAuthorProfiles[comment.authorProfileId];
+
+      if (cachedCommentAuthorProfileByProfileId) {
+        return cachedCommentAuthorProfileByProfileId;
       }
     }
 
@@ -1022,6 +1030,7 @@ export default function ProfilePage() {
       setVerificationSuccess(null);
       setComments([]);
       setCommentAuthorProfiles({});
+      setCommentAuthorProfilesByCommentId({});
       setCommentsError(null);
       setIsAdminPanelOpen(false);
       setBanError(null);
@@ -1063,6 +1072,7 @@ export default function ProfilePage() {
       if (!activeProfile?.profileId) {
         setComments([]);
         setCommentAuthorProfiles({});
+        setCommentAuthorProfilesByCommentId({});
         setCommentsError(null);
         setIsCommentsLoading(false);
       }
@@ -1101,6 +1111,7 @@ export default function ProfilePage() {
   useEffect(() => {
     if (!comments.length) {
       setCommentAuthorProfiles({});
+      setCommentAuthorProfilesByCommentId({});
       return;
     }
 
@@ -1108,6 +1119,7 @@ export default function ProfilePage() {
 
     if (!bridge) {
       setCommentAuthorProfiles({});
+      setCommentAuthorProfilesByCommentId({});
       return;
     }
 
@@ -1176,6 +1188,100 @@ export default function ProfilePage() {
       isCancelled = true;
     };
   }, [comments, activeProfile, visibleCurrentUser]);
+
+  useEffect(() => {
+    if (!comments.length) {
+      setCommentAuthorProfilesByCommentId({});
+      return;
+    }
+
+    const bridge = getWindowState().sakuraFirebaseAuth;
+
+    if (!bridge) {
+      setCommentAuthorProfilesByCommentId({});
+      return;
+    }
+
+    let isCancelled = false;
+
+    void (async () => {
+      const nextCommentAuthorProfilesByCommentId: Record<string, UserProfile> = {};
+
+      comments.forEach((comment) => {
+        if (typeof comment.authorProfileId === "number" && commentAuthorProfiles[comment.authorProfileId]) {
+          nextCommentAuthorProfilesByCommentId[comment.id] = commentAuthorProfiles[comment.authorProfileId];
+          return;
+        }
+
+        if (activeProfile && commentMatchesUser(comment, activeProfile)) {
+          nextCommentAuthorProfilesByCommentId[comment.id] = activeProfile;
+          return;
+        }
+
+        if (visibleCurrentUser && commentMatchesUser(comment, visibleCurrentUser)) {
+          nextCommentAuthorProfilesByCommentId[comment.id] = visibleCurrentUser;
+        }
+      });
+
+      const unresolvedComments = comments.filter(
+        (comment) =>
+          !nextCommentAuthorProfilesByCommentId[comment.id] &&
+          normalizeCommentAuthorKey(comment.authorName)
+      );
+
+      if (unresolvedComments.length) {
+        const profilesByAuthorKey = new Map<string, UserProfile>();
+        const unresolvedAuthorNames = [...new Set(
+          unresolvedComments.map((comment) => normalizeCommentAuthorKey(comment.authorName)).filter(Boolean)
+        )];
+
+        await Promise.all(
+          unresolvedAuthorNames.map(async (unresolvedAuthorName) => {
+            const sampleComment = unresolvedComments.find(
+              (comment) => normalizeCommentAuthorKey(comment.authorName) === unresolvedAuthorName
+            );
+
+            if (!sampleComment) {
+              return;
+            }
+
+            try {
+              const resolvedCommentAuthorProfile = await bridge.getProfileByAuthorName(sampleComment.authorName);
+
+              if (resolvedCommentAuthorProfile) {
+                profilesByAuthorKey.set(unresolvedAuthorName, resolvedCommentAuthorProfile);
+              }
+            } catch (error) {
+            }
+          })
+        );
+
+        unresolvedComments.forEach((comment) => {
+          const authorKey = normalizeCommentAuthorKey(comment.authorName);
+
+          if (!authorKey) {
+            return;
+          }
+
+          const resolvedCommentAuthorProfile = profilesByAuthorKey.get(authorKey);
+
+          if (resolvedCommentAuthorProfile) {
+            nextCommentAuthorProfilesByCommentId[comment.id] = resolvedCommentAuthorProfile;
+          }
+        });
+      }
+
+      if (isCancelled) {
+        return;
+      }
+
+      setCommentAuthorProfilesByCommentId(nextCommentAuthorProfilesByCommentId);
+    })();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [comments, commentAuthorProfiles, activeProfile, visibleCurrentUser]);
 
   const normalizedDraftRoles = normalizeRoleSelection(draftRoles);
   const availableRoleOptions = EDITABLE_ROLE_OPTIONS.filter(

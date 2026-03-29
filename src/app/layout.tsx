@@ -1459,6 +1459,76 @@ const firebaseModuleScript = `
       return toStoredUserSnapshot(profileDoc.id, profileDoc.data());
     };
 
+    const getProfileByAuthorName = async (authorName) => {
+      const normalizedAuthorName = normalizeProfileCommentAuthorName(authorName);
+
+      if (!normalizedAuthorName) {
+        return null;
+      }
+
+      const readProfileDoc = async () =>
+        withTimeout(
+          findUserByAuthorName(normalizedAuthorName),
+          PROFILE_LOOKUP_TIMEOUT_MS,
+          () =>
+            createFirebaseError(
+              "profile/load-timeout",
+              "Profile loading took too long. Refresh the page and try again."
+            )
+        );
+
+      let profileDoc = null;
+      let publicReadDenied = false;
+
+      try {
+        profileDoc = await readProfileDoc();
+      } catch (error) {
+        if (!isPermissionDeniedError(error)) {
+          throw error;
+        }
+
+        publicReadDenied = true;
+      }
+
+      if (!publicReadDenied) {
+        return profileDoc ? toStoredUserSnapshot(profileDoc.id, profileDoc.data()) : null;
+      }
+
+      await waitForAuthStateSettlement();
+
+      if (auth.currentUser && !auth.currentUser.isAnonymous) {
+        try {
+          profileDoc = await readProfileDoc();
+          return profileDoc ? toStoredUserSnapshot(profileDoc.id, profileDoc.data()) : null;
+        } catch (error) {
+          if (!isPermissionDeniedError(error)) {
+            throw error;
+          }
+        }
+      }
+
+      const viewer = await ensureProfileViewer();
+
+      if (viewer.isAnonymous) {
+        publishUserSnapshot(toAnonymousViewerSnapshot(viewer));
+      }
+
+      try {
+        profileDoc = await readProfileDoc();
+      } catch (error) {
+        if (isPermissionDeniedError(error)) {
+          throw createFirebaseError(
+            "profile/public-view-denied",
+            "Public profile viewing is blocked by Firestore rules. Allow public read access or anonymous users to read users collection."
+          );
+        }
+
+        throw error;
+      }
+
+      return profileDoc ? toStoredUserSnapshot(profileDoc.id, profileDoc.data()) : null;
+    };
+
     const getProfileComments = async (profileId) => {
       if (!Number.isInteger(profileId) || profileId <= 0) {
         throw createFirebaseError("profile/invalid-id", "Profile id must be a positive number.");
@@ -2038,6 +2108,7 @@ const firebaseModuleScript = `
       loginWithGoogle,
       updateUsername,
       getProfileById,
+      getProfileByAuthorName,
       getProfileComments,
       addProfileComment,
       deleteProfileComment,
