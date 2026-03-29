@@ -91,24 +91,38 @@ export function AvatarMedia({
   decoding,
 }: AvatarMediaProps) {
   const [resolvedSrc, setResolvedSrc] = useState(src);
+  const [renderKey, setRenderKey] = useState(0);
 
   useEffect(() => {
-    setResolvedSrc(src);
+    let objectUrl: string | null = null;
+    let animationFrameId = 0;
 
-    if (!ANIMATED_DATA_URL_PATTERN.test(src.trim())) {
+    if (!isAnimatedAvatarSource(src)) {
+      setResolvedSrc(src);
+      setRenderKey((currentKey) => currentKey + 1);
       return;
     }
 
-    let objectUrl: string | null = null;
+    setResolvedSrc("");
 
     try {
-      objectUrl = URL.createObjectURL(dataUrlToBlob(src));
-      setResolvedSrc(objectUrl);
+      objectUrl = ANIMATED_DATA_URL_PATTERN.test(src.trim())
+        ? URL.createObjectURL(dataUrlToBlob(src))
+        : src;
     } catch {
-      setResolvedSrc(src);
+      objectUrl = src;
     }
 
+    animationFrameId = window.requestAnimationFrame(() => {
+      setResolvedSrc(objectUrl ?? src);
+      setRenderKey((currentKey) => currentKey + 1);
+    });
+
     return () => {
+      if (animationFrameId) {
+        window.cancelAnimationFrame(animationFrameId);
+      }
+
       if (objectUrl) {
         URL.revokeObjectURL(objectUrl);
       }
@@ -118,7 +132,7 @@ export function AvatarMedia({
   if (isVideoAvatarSource(resolvedSrc)) {
     return (
       <video
-        key={resolvedSrc}
+        key={`${renderKey}:${resolvedSrc}`}
         src={resolvedSrc}
         aria-label={alt}
         title={alt}
@@ -136,7 +150,7 @@ export function AvatarMedia({
 
   return (
     <img
-      key={resolvedSrc}
+      key={`${renderKey}:${resolvedSrc}`}
       src={resolvedSrc}
       alt={alt}
       loading={loading}
