@@ -253,29 +253,6 @@
     typeof value === "string"
       ? value.trim().replace(/\\s+/g, " ").slice(0, DISPLAY_NAME_MAX_LENGTH)
       : "";
-  const sanitizeAvatarUrl = (value) =>
-    typeof value === "string" ? value.trim() : "";
-  const normalizeExternalAvatarUrl = (value) => {
-    const sanitizedUrl = sanitizeAvatarUrl(value);
-
-    if (!sanitizedUrl) {
-      throw createFirebaseError("avatar/empty-url", "Enter an avatar URL.");
-    }
-
-    let parsedUrl;
-
-    try {
-      parsedUrl = new URL(sanitizedUrl);
-    } catch (error) {
-      throw createFirebaseError("avatar/invalid-url", "Enter a valid http:// or https:// avatar URL.");
-    }
-
-    if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
-      throw createFirebaseError("avatar/invalid-url", "Enter a valid http:// or https:// avatar URL.");
-    }
-
-    return parsedUrl.toString();
-  };
 
   const normalizeLogin = (value) => sanitizeLogin(value).toLocaleLowerCase();
 
@@ -2111,28 +2088,6 @@
         );
       }
 
-      if (
-        !STORAGE_AVATAR_UPLOADS_ENABLED &&
-        PASSTHROUGH_AVATAR_CONTENT_TYPES.has(file.type) &&
-        file.type !== "image/gif"
-      ) {
-        throw createFirebaseError(
-          "avatar/external-url-required",
-          "Use Avatar URL for WEBP, MP4, and WEBM in this project."
-        );
-      }
-
-      if (
-        !STORAGE_AVATAR_UPLOADS_ENABLED &&
-        PASSTHROUGH_AVATAR_CONTENT_TYPES.has(file.type) &&
-        file.type !== "image/gif"
-      ) {
-        throw createFirebaseError(
-          "avatar/external-url-required",
-          "Use Avatar URL for WEBP, MP4, and WEBM in this project."
-        );
-      }
-
       const photoURL = await resolvePersistedAvatarUrl(user.uid, file);
       const userRef = userRefFor(user.uid);
       const existingSnapshot = await getDoc(userRef);
@@ -2180,69 +2135,6 @@
           "avatar/persist-failed",
           "Avatar could not be saved. Check Firestore rules for users/{uid}."
         );
-      }
-
-      const currentDetails = window.sakuraCurrentUserSnapshot
-        ? buildUserDetailsFromSnapshot(user, window.sakuraCurrentUserSnapshot)
-        : buildFallbackUserDetails(user);
-
-      return publishUserSnapshot(
-        toUserSnapshot(user, {
-          ...currentDetails,
-          photoURL,
-        })
-      );
-    };
-
-    const updateAvatarFromUrl = async (nextUrl) => {
-      const user = auth.currentUser;
-
-      if (!user) {
-        throw createFirebaseError("auth/no-current-user", "Sign in again to update your avatar.");
-      }
-
-      const photoURL = normalizeExternalAvatarUrl(nextUrl);
-      const userRef = userRefFor(user.uid);
-      const existingSnapshot = await getDoc(userRef);
-      const existingData = existingSnapshot.exists() ? existingSnapshot.data() : {};
-      const hasStoredProfileRecord =
-        existingSnapshot.exists() && typeof existingData?.profileId === "number";
-
-      if (!hasStoredProfileRecord) {
-        await resolveUserSnapshot(user);
-      }
-
-      try {
-        await setDoc(
-          userRef,
-          {
-            photoURL,
-            updatedAt: new Date().toISOString(),
-          },
-          { merge: true }
-        );
-      } catch (error) {
-        if (!isPermissionDeniedError(error)) {
-          throw error;
-        }
-
-        if (!hasStoredProfileRecord) {
-          await resolveUserSnapshot(user);
-
-          await setDoc(
-            userRef,
-            {
-              photoURL,
-              updatedAt: new Date().toISOString(),
-            },
-            { merge: true }
-          );
-        } else {
-          throw createFirebaseError(
-            "avatar/persist-failed",
-            "Avatar URL could not be saved. Check Firestore rules for users/{uid}."
-          );
-        }
       }
 
       const currentDetails = window.sakuraCurrentUserSnapshot
@@ -2488,47 +2380,6 @@
         throw createFirebaseError(
           "avatar/persist-failed",
           "Avatar could not be saved. Check Firestore rules for privileged users."
-        );
-      }
-
-      return refreshStoredUserSnapshot(targetDoc.id, {
-        ...targetDoc.data(),
-        photoURL,
-      });
-    };
-
-    const adminUpdateProfileAvatarUrl = async (profileId, nextUrl) => {
-      await ensureRootActorSnapshot();
-
-      if (!Number.isInteger(profileId) || profileId <= 0) {
-        throw createFirebaseError("profile/invalid-id", "Profile id must be a positive number.");
-      }
-
-      const targetDoc = await findUserByProfileId(profileId);
-
-      if (!targetDoc) {
-        return null;
-      }
-
-      const photoURL = normalizeExternalAvatarUrl(nextUrl);
-
-      try {
-        await setDoc(
-          userRefFor(targetDoc.id),
-          {
-            photoURL,
-            updatedAt: new Date().toISOString(),
-          },
-          { merge: true }
-        );
-      } catch (error) {
-        if (!isPermissionDeniedError(error)) {
-          throw error;
-        }
-
-        throw createFirebaseError(
-          "avatar/persist-failed",
-          "Avatar URL could not be saved. Check Firestore rules for privileged users."
         );
       }
 
@@ -2862,10 +2713,8 @@
       resendVerificationEmail,
       updateProfileRoles,
       updateAvatar,
-      updateAvatarFromUrl,
       deleteAvatar,
       adminUpdateProfileAvatar,
-      adminUpdateProfileAvatarUrl,
       adminDeleteProfileAvatar,
       syncPresence: async (options = {}) => {
         const user = auth.currentUser;
