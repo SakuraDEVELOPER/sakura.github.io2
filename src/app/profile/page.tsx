@@ -125,7 +125,7 @@ const getProfileActionErrorMessage = (error: unknown, fallback: string) => {
   }
 
   if (code === "comments/update-forbidden") {
-    return "Only root can edit comments.";
+    return "You can only edit your own comments unless you are root.";
   }
 
   if (code === "ban/self-forbidden") {
@@ -1118,7 +1118,8 @@ export default function ProfilePage() {
   const canEditComment = (comment: ProfileComment) =>
     Boolean(
       visibleCurrentUser &&
-        canManageRoles(visibleCurrentUser.roles)
+        (comment.authorUid === visibleCurrentUser.uid ||
+          canManageRoles(visibleCurrentUser.roles))
     );
 
   useEffect(() => {
