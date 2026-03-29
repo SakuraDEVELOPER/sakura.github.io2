@@ -2223,12 +2223,12 @@
       }
 
       const isAuthor = comment.authorUid === user.uid;
-      const hasCommentModerationAccess = canModerateComments(actorSnapshot?.roles ?? []);
+      const hasCommentEditAccess = canManageRoles(actorSnapshot?.roles ?? []);
 
-      if (!isAuthor && !hasCommentModerationAccess) {
+      if (!isAuthor && !hasCommentEditAccess) {
         throw createFirebaseError(
           "comments/update-forbidden",
-          "You can only edit your own comments unless you have staff moderation access."
+          "You can only edit your own comments unless you are root."
         );
       }
 
