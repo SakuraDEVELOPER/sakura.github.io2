@@ -74,7 +74,7 @@ const AUTH_STATE_SETTLED_EVENT = "sakura-auth-state-settled";
 const USER_UPDATE_EVENT = "sakura-user-update";
 const PROFILE_PATH_STORAGE_KEY = "sakura-profile-path";
 const CURRENT_PROFILE_ID_STORAGE_KEY = "sakura-current-profile-id";
-const PROFILE_BUILD_MARKER = "role-colors-v34";
+const PROFILE_BUILD_MARKER = "role-colors-v35";
 const repoBasePath = "/sakura.github.io";
 const restoreProfilePathScript = `
   (function () {

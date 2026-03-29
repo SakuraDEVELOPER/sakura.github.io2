@@ -887,7 +887,29 @@ const firebaseModuleScript = `
         query(usersCollection, where("displayName", "==", normalizedAuthorName), limit(1))
       );
 
-      return userByDisplayName.empty ? null : userByDisplayName.docs[0];
+      if (!userByDisplayName.empty) {
+        return userByDisplayName.docs[0];
+      }
+
+      const authorLookupKey = normalizeProfileCommentAuthorLookupKey(normalizedAuthorName);
+      const userCandidates = await getDocs(query(usersCollection, limit(200)));
+
+      for (const userDoc of userCandidates.docs) {
+        const userDetails = userDoc.data();
+        const candidateKeys = [
+          normalizeProfileCommentAuthorLookupKey(typeof userDetails?.login === "string" ? userDetails.login : ""),
+          normalizeProfileCommentAuthorLookupKey(typeof userDetails?.displayName === "string" ? userDetails.displayName : ""),
+          typeof userDetails?.profileId === "number"
+            ? normalizeProfileCommentAuthorLookupKey("Profile #" + userDetails.profileId)
+            : "",
+        ].filter(Boolean);
+
+        if (candidateKeys.includes(authorLookupKey)) {
+          return userDoc;
+        }
+      }
+
+      return null;
     };
 
     const findUserByProfileId = async (profileId) => {
