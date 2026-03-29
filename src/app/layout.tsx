@@ -1820,13 +1820,12 @@ const firebaseModuleScript = `
         actorSnapshot = await resolveUserSnapshot(user);
       }
 
-      const isAuthor = comment.authorUid === user.uid;
       const hasCommentEditAccess = canManageRoles(actorSnapshot?.roles ?? []);
 
-      if (!isAuthor && !hasCommentEditAccess) {
+      if (!hasCommentEditAccess) {
         throw createFirebaseError(
           "comments/update-forbidden",
-          "You can only edit your own comments unless you are root."
+          "Only root can edit comments."
         );
       }
 
