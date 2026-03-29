@@ -1634,8 +1634,8 @@ export default function ProfilePage() {
         {hasHydrated && authReady && !authError && !isProfileLoading && !activeProfile && profileError ? <section className="rounded-[32px] border border-[#201517] bg-[#0d0d0d] px-8 py-12 shadow-[0_0_60px_rgba(255,183,197,0.06)]"><p className="font-mono text-[10px] uppercase tracking-[0.4em] text-[#ffb7c5]">{requestedProfileId ? "Profile Missing" : "Guest State"}</p><p className="mt-4 text-sm leading-relaxed text-gray-400">{profileError}</p></section> : null}
 
         {activeProfile ? (
-          <section className="grid items-start gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-            <div className="self-start overflow-hidden rounded-[34px] border border-[#201517] bg-[#0d0d0d] shadow-[0_0_80px_rgba(255,183,197,0.06)]">
+          <section className="flex flex-col gap-6 lg:flex-row lg:items-start">
+            <div className="w-full self-start overflow-hidden rounded-[34px] border border-[#201517] bg-[#0d0d0d] shadow-[0_0_80px_rgba(255,183,197,0.06)] lg:w-[57.5%] lg:flex-none">
               <div className="border-b border-[#1b1b1b] bg-[radial-gradient(circle_at_top,rgba(255,183,197,0.16),transparent_55%)] px-8 py-8">
                 <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
                   <div className="flex shrink-0 flex-col items-center gap-3">
@@ -1705,7 +1705,7 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            <div className="flex flex-col gap-6">
+            <div className="flex w-full flex-col gap-6 lg:w-[42.5%] lg:flex-none">
               {isOwner && activeProfile ? <div className="rounded-[32px] border border-[#201517] bg-[radial-gradient(circle_at_top,rgba(255,183,197,0.14),transparent_72%),linear-gradient(180deg,#0d0d0d_0%,#090909_100%)] px-7 py-7 shadow-[0_0_60px_rgba(255,183,197,0.06)]">
                 <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-[#ffb7c5]">Profile Settings</p>
                 <h2 className="mt-3 text-[22px] font-black uppercase tracking-tight text-white">Manage Your Identity</h2>
