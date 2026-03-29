@@ -1524,6 +1524,26 @@
       const userRef = userRefFor(user.uid);
       const existingSnapshot = await getDoc(userRef);
       const existingData = existingSnapshot.exists() ? existingSnapshot.data() : {};
+      const hasStoredProfileRecord =
+        existingSnapshot.exists() && typeof existingData?.profileId === "number";
+      const syncAuthDisplayNameIfNeeded = async () => {
+        if ((typeof user.displayName === "string" ? user.displayName.trim() : null) !== sanitizedDisplayName) {
+          try {
+            await updateProfile(user, { displayName: sanitizedDisplayName });
+          } catch (error) {
+            console.error("Failed to sync Firebase Auth displayName after profile name change:", error);
+          }
+        }
+      };
+
+      if (!hasStoredProfileRecord) {
+        const recoveredSnapshot = await resolveUserSnapshot(user, {
+          preferredDisplayName: sanitizedDisplayName,
+        });
+
+        await syncAuthDisplayNameIfNeeded();
+        return recoveredSnapshot;
+      }
 
       try {
         await setDoc(
@@ -1539,19 +1559,22 @@
           throw error;
         }
 
+        if (!hasStoredProfileRecord) {
+          const recoveredSnapshot = await resolveUserSnapshot(user, {
+            preferredDisplayName: sanitizedDisplayName,
+          });
+
+          await syncAuthDisplayNameIfNeeded();
+          return recoveredSnapshot;
+        }
+
         throw createFirebaseError(
           "display-name/persist-failed",
           "Profile name could not be saved. Check Firestore rules for users/{uid}."
         );
       }
 
-      if ((typeof user.displayName === "string" ? user.displayName.trim() : null) !== sanitizedDisplayName) {
-        try {
-          await updateProfile(user, { displayName: sanitizedDisplayName });
-        } catch (error) {
-          console.error("Failed to sync Firebase Auth displayName after profile name change:", error);
-        }
-      }
+      await syncAuthDisplayNameIfNeeded();
 
       return publishUserSnapshot(
         toUserSnapshot(user, {
@@ -1756,7 +1779,12 @@
       }
 
       let authorSnapshot = window.sakuraCurrentUserSnapshot;
-      if (!authorSnapshot || authorSnapshot.isAnonymous || authorSnapshot.uid !== user.uid) {
+      if (
+        !authorSnapshot ||
+        authorSnapshot.isAnonymous ||
+        authorSnapshot.uid !== user.uid ||
+        !hasAssignedProfileId(authorSnapshot)
+      ) {
         authorSnapshot = await resolveUserSnapshot(user);
       }
 

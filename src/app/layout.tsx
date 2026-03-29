@@ -1521,7 +1521,12 @@ const firebaseModuleScript = `
       }
 
       let authorSnapshot = window.sakuraCurrentUserSnapshot;
-      if (!authorSnapshot || authorSnapshot.isAnonymous || authorSnapshot.uid !== user.uid) {
+      if (
+        !authorSnapshot ||
+        authorSnapshot.isAnonymous ||
+        authorSnapshot.uid !== user.uid ||
+        !hasAssignedProfileId(authorSnapshot)
+      ) {
         authorSnapshot = await resolveUserSnapshot(user);
       }
 
