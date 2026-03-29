@@ -1,4 +1,4 @@
-// app/page.tsx
+﻿// app/page.tsx
 "use client";
 /* eslint-disable @next/next/no-img-element */
 
@@ -59,7 +59,7 @@ const showcaseSlides: ShowcaseSlide[] = [
     id: "hud-panel",
     index: "02",
     title: "HP / MP bar + панель скиллов и предметов",
-    desc: "Полосы ресурсов врагов и тимейтов, а также панель скиллов и предметов в одном блоке, чтобы удобно отслеживать, что у него есть, и тем самым иметь преимущество.",
+    desc: "Полосы ресурсов врагов и тиммейтов, а также панель скиллов и предметов в одном блоке, чтобы удобно отслеживать, что у него есть, и тем самым иметь преимущество.",
     mediaOverlayTitle: "Enemy esp",
     mediaCaption: "HUD с барами, скиллами и предметами",
     mediaLabel: "Скриншот HUD с барами, скиллами и предметами",
@@ -1826,7 +1826,7 @@ function FeatureShowcase() {
             Feature Showcase
           </p>
           <h2 className="max-w-2xl text-4xl font-black uppercase tracking-tighter text-white">
-            Р›РёСЃС‚Р°Р№ РєР°СЂС‚РѕС‡РєРё
+            Листай карточки
           </h2>
         </div>
 
@@ -1931,7 +1931,6 @@ function FeatureShowcase() {
     </section>
   );
 }
-
 function SetupSteps() {
   const steps = [
     {
