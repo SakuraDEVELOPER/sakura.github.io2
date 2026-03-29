@@ -450,7 +450,14 @@ const firebaseModuleScript = `
   };
 
   const ROLE_MANAGER_NAMES = new Set(["root"]);
-  const COMMENT_MODERATOR_ROLE_NAMES = new Set(["root", "co-owner", "moderator"]);
+  const COMMENT_MODERATOR_ROLE_NAMES = new Set([
+    "root",
+    "co-owner",
+    "super administrator",
+    "administrator",
+    "support",
+    "moderator",
+  ]);
   const canManageRoles = (roles) =>
     normalizeRoles(roles).some((role) => ROLE_MANAGER_NAMES.has(normalizeRoleName(role)));
   const canModerateComments = (roles) =>
@@ -549,6 +556,7 @@ const firebaseModuleScript = `
         : null,
     message: normalizeProfileCommentMessage(details.message),
     createdAt: normalizeProfileCommentCreatedAt(details.createdAt),
+    updatedAt: normalizeProfileCommentCreatedAt(details.updatedAt),
   });
   const sortProfileComments = (comments) =>
     [...comments].sort(
@@ -1773,6 +1781,84 @@ const firebaseModuleScript = `
       return comment.id;
     };
 
+    const updateProfileComment = async (commentId, message) => {
+      const normalizedCommentId = typeof commentId === "string" ? commentId.trim() : "";
+
+      if (!normalizedCommentId) {
+        throw createFirebaseError("comments/invalid-id", "Comment id is required.");
+      }
+
+      const normalizedMessage = normalizeProfileCommentMessage(message);
+
+      if (!normalizedMessage) {
+        throw createFirebaseError(
+          "comments/empty-message",
+          "Write a comment before saving."
+        );
+      }
+
+      const user = auth.currentUser;
+
+      if (!user || user.isAnonymous) {
+        throw createFirebaseError(
+          "comments/login-required",
+          "Sign in to manage comments on this profile."
+        );
+      }
+
+      const commentRef = doc(profileCommentsCollection, normalizedCommentId);
+      const commentSnapshot = await getDoc(commentRef);
+
+      if (!commentSnapshot.exists()) {
+        return null;
+      }
+
+      const comment = toStoredProfileComment(commentSnapshot.id, commentSnapshot.data());
+      let actorSnapshot = window.sakuraCurrentUserSnapshot;
+
+      if (!actorSnapshot || actorSnapshot.isAnonymous || actorSnapshot.uid !== user.uid) {
+        actorSnapshot = await resolveUserSnapshot(user);
+      }
+
+      const isAuthor = comment.authorUid === user.uid;
+      const hasCommentModerationAccess = canModerateComments(actorSnapshot?.roles ?? []);
+
+      if (!isAuthor && !hasCommentModerationAccess) {
+        throw createFirebaseError(
+          "comments/update-forbidden",
+          "You can only edit your own comments unless you have staff moderation access."
+        );
+      }
+
+      const updatedAt = new Date().toISOString();
+
+      try {
+        await setDoc(
+          commentRef,
+          {
+            message: normalizedMessage,
+            updatedAt,
+          },
+          { merge: true }
+        );
+      } catch (error) {
+        if (isPermissionDeniedError(error)) {
+          throw createFirebaseError(
+            "comments/update-denied",
+            "Comments could not be updated. Check Firestore rules for profileComments."
+          );
+        }
+
+        throw error;
+      }
+
+      return toStoredProfileComment(comment.id, {
+        ...comment,
+        message: normalizedMessage,
+        updatedAt,
+      });
+    };
+
     const updateAvatar = async (file) => {
       const user = auth.currentUser;
 
@@ -2118,6 +2204,7 @@ const firebaseModuleScript = `
       getProfileByAuthorName,
       getProfileComments,
       addProfileComment,
+      updateProfileComment,
       deleteProfileComment,
       resendVerificationEmail,
       updateProfileRoles,

@@ -37,6 +37,7 @@ type ProfileComment = {
   authorAccentRole: string | null;
   message: string;
   createdAt: string | null;
+  updatedAt?: string | null;
 };
 
 type Bridge = {
@@ -44,6 +45,7 @@ type Bridge = {
   getProfileByAuthorName: (authorName: string) => Promise<UserProfile | null>;
   getProfileComments: (profileId: number) => Promise<ProfileComment[]>;
   addProfileComment: (profileId: number, message: string) => Promise<ProfileComment>;
+  updateProfileComment: (commentId: string, message: string) => Promise<ProfileComment | null>;
   deleteProfileComment: (commentId: string) => Promise<string | null>;
   resendVerificationEmail: () => Promise<UserProfile | null>;
   updateDisplayName: (displayName: string) => Promise<UserProfile | null>;
@@ -76,7 +78,7 @@ const AUTH_STATE_SETTLED_EVENT = "sakura-auth-state-settled";
 const USER_UPDATE_EVENT = "sakura-user-update";
 const PROFILE_PATH_STORAGE_KEY = "sakura-profile-path";
 const CURRENT_PROFILE_ID_STORAGE_KEY = "sakura-current-profile-id";
-const PROFILE_BUILD_MARKER = "role-colors-v39";
+const PROFILE_BUILD_MARKER = "role-colors-v40";
 const repoBasePath = "/sakura.github.io";
 const restoreProfilePathScript = `
   (function () {
@@ -120,6 +122,10 @@ const getProfileActionErrorMessage = (error: unknown, fallback: string) => {
 
   if (code === "comments/delete-forbidden") {
     return "You can only delete your own comments, comments on your profile, or moderate comments with staff roles.";
+  }
+
+  if (code === "comments/update-forbidden") {
+    return "You can only edit your own comments unless you have staff moderation access.";
   }
 
   if (code === "ban/self-forbidden") {
@@ -592,7 +598,14 @@ const roleCommentAuthorStyle = (role: string | null | undefined): CSSProperties 
   color: roleCommentAuthorColor(role),
 });
 const ROLE_MANAGER_NAMES = new Set(["root"]);
-const COMMENT_MODERATOR_ROLE_NAMES = new Set(["root", "co-owner", "moderator"]);
+const COMMENT_MODERATOR_ROLE_NAMES = new Set([
+  "root",
+  "co-owner",
+  "super administrator",
+  "administrator",
+  "support",
+  "moderator",
+]);
 const REMOVED_ROLE_NAMES = new Set([
   "subscriber",
 ]);
@@ -785,6 +798,9 @@ export default function ProfilePage() {
   const [commentError, setCommentError] = useState<string | null>(null);
   const [commentSuccess, setCommentSuccess] = useState<string | null>(null);
   const [isCommentSubmitting, setIsCommentSubmitting] = useState(false);
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editingCommentMessage, setEditingCommentMessage] = useState("");
+  const [isCommentUpdating, setIsCommentUpdating] = useState(false);
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -1099,6 +1115,12 @@ export default function ProfilePage() {
             typeof activeProfile?.profileId === "number" &&
             comment.profileId === activeProfile.profileId))
     );
+  const canEditComment = (comment: ProfileComment) =>
+    Boolean(
+      visibleCurrentUser &&
+        (comment.authorUid === visibleCurrentUser.uid ||
+          canModerateComments(visibleCurrentUser.roles))
+    );
 
   useEffect(() => {
     if (!activeProfile) {
@@ -1117,6 +1139,9 @@ export default function ProfilePage() {
       setCommentInput("");
       setCommentError(null);
       setCommentSuccess(null);
+      setEditingCommentId(null);
+      setEditingCommentMessage("");
+      setIsCommentUpdating(false);
       setDeletingCommentId(null);
       return;
     }
@@ -1137,6 +1162,9 @@ export default function ProfilePage() {
     setCommentInput("");
     setCommentError(null);
     setCommentSuccess(null);
+    setEditingCommentId(null);
+    setEditingCommentMessage("");
+    setIsCommentUpdating(false);
     setDeletingCommentId(null);
   }, [activeProfile, activeProfileRoleSignature]);
 
@@ -1682,12 +1710,66 @@ export default function ProfilePage() {
       setComments((currentComments) =>
         currentComments.filter((comment) => comment.id !== resolvedCommentId)
       );
+      if (editingCommentId === resolvedCommentId) {
+        setEditingCommentId(null);
+        setEditingCommentMessage("");
+      }
 
       setCommentSuccess("Comment deleted.");
     } catch (error) {
       setCommentError(getProfileActionErrorMessage(error, "Could not delete this comment."));
     } finally {
       setDeletingCommentId((currentId) => (currentId === commentId ? null : currentId));
+    }
+  };
+
+  const handleCommentEditStart = (comment: ProfileComment) => {
+    setCommentError(null);
+    setCommentSuccess(null);
+    setEditingCommentId(comment.id);
+    setEditingCommentMessage(comment.message);
+  };
+
+  const handleCommentEditCancel = () => {
+    setEditingCommentId(null);
+    setEditingCommentMessage("");
+  };
+
+  const handleCommentUpdate = async (commentId: string) => {
+    const bridge = getWindowState().sakuraFirebaseAuth;
+    const nextMessage = editingCommentMessage.trim();
+
+    if (!bridge || !commentId) {
+      return;
+    }
+
+    if (!nextMessage) {
+      setCommentError("Write a comment before saving.");
+      return;
+    }
+
+    setCommentError(null);
+    setCommentSuccess(null);
+    setIsCommentUpdating(true);
+
+    try {
+      const updatedComment = await bridge.updateProfileComment(commentId, nextMessage);
+
+      if (updatedComment) {
+        setComments((currentComments) =>
+          currentComments.map((comment) =>
+            comment.id === updatedComment.id ? updatedComment : comment
+          )
+        );
+      }
+
+      setEditingCommentId(null);
+      setEditingCommentMessage("");
+      setCommentSuccess("Comment updated.");
+    } catch (error) {
+      setCommentError(getProfileActionErrorMessage(error, "Could not update this comment."));
+    } finally {
+      setIsCommentUpdating(false);
     }
   };
 
@@ -1950,6 +2032,9 @@ export default function ProfilePage() {
                   {!isCommentsLoading && !commentsError && comments.length ? <div className="mt-4 flex flex-col gap-3">
                     {comments.map((comment) => {
                       const isDeletingComment = deletingCommentId === comment.id;
+                      const isEditingComment = editingCommentId === comment.id;
+                      const isSavingCommentUpdate = isEditingComment && isCommentUpdating;
+                      const showEditAction = canEditComment(comment);
                       const showDeleteAction = canDeleteComment(comment);
                       const commentInitials = initialsFromText(comment.authorName);
                       const resolvedCommentAuthorRole = resolveCommentAuthorRole(comment);
@@ -1965,9 +2050,22 @@ export default function ProfilePage() {
                               <p className="mt-1 text-xs text-gray-500">{formatTime(comment.createdAt)}</p>
                             </div>
                           </div>
-                          {showDeleteAction ? <button type="button" onClick={() => handleCommentDelete(comment.id)} disabled={isDeletingComment} className="inline-flex shrink-0 items-center justify-center rounded-full border border-[#3a2a31] bg-[#140d11] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-[#ffb7c5] transition hover:border-[#ffb7c5]/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-60">{isDeletingComment ? "Deleting..." : "Delete"}</button> : null}
+                          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                            {showEditAction && !isEditingComment ? <button type="button" onClick={() => handleCommentEditStart(comment)} disabled={isDeletingComment || isCommentUpdating} className="inline-flex items-center justify-center rounded-full border border-[#3a2a31] bg-[#140d11] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-[#ffb7c5] transition hover:border-[#ffb7c5]/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-60">Edit</button> : null}
+                            {showDeleteAction ? <button type="button" onClick={() => handleCommentDelete(comment.id)} disabled={isDeletingComment || isSavingCommentUpdate} className="inline-flex items-center justify-center rounded-full border border-[#3a2a31] bg-[#140d11] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-[#ffb7c5] transition hover:border-[#ffb7c5]/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-60">{isDeletingComment ? "Deleting..." : "Delete"}</button> : null}
+                          </div>
                         </div>
-                        <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-relaxed text-gray-300">{comment.message}</p>
+                        {isEditingComment ? <div className="mt-3">
+                          <textarea value={editingCommentMessage} maxLength={280} rows={4} onChange={(event) => setEditingCommentMessage(event.target.value)} className="w-full resize-y rounded-2xl border border-[#232323] bg-[#090909] px-4 py-3 text-sm text-white outline-none transition placeholder:text-gray-600 focus:border-[#ffb7c5]/55" placeholder="Update comment..." />
+                          <div className="mt-2 flex items-center justify-between gap-3 text-xs text-gray-500">
+                            <span>{editingCommentMessage.trim().length}/280</span>
+                            <span>{comment.updatedAt ? `Edited ${formatTime(comment.updatedAt)}` : `Posted ${formatTime(comment.createdAt)}`}</span>
+                          </div>
+                          <div className="mt-4 flex flex-wrap items-center gap-3">
+                            <button type="button" onClick={() => handleCommentUpdate(comment.id)} disabled={isSavingCommentUpdate || !editingCommentMessage.trim()} className="inline-flex items-center justify-center rounded-full border border-[#ffb7c5]/30 bg-[#ffb7c5] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-black transition hover:bg-[#ffc8d3] disabled:cursor-not-allowed disabled:opacity-60">{isSavingCommentUpdate ? "Saving..." : "Save"}</button>
+                            <button type="button" onClick={handleCommentEditCancel} disabled={isSavingCommentUpdate} className="inline-flex items-center justify-center rounded-full border border-[#3a2a31] bg-[#140d11] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-[#ffb7c5] transition hover:border-[#ffb7c5]/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-60">Cancel</button>
+                          </div>
+                        </div> : <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-relaxed text-gray-300">{comment.message}</p>}
                       </div>;
                     })}
                   </div> : null}
