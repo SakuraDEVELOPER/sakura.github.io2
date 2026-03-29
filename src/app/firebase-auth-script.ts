@@ -39,11 +39,19 @@
           serverTimestamp,
           setDoc,
           where
+        },
+        {
+          deleteObject,
+          getDownloadURL,
+          getStorage,
+          ref: storageRef,
+          uploadBytes
         }
       ] = await Promise.all([
         import("https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js"),
         import("https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js"),
-        import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js")
+        import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js"),
+        import("https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js")
       ]);
 
       const firebaseConfig = {
@@ -63,6 +71,7 @@
   const AVATAR_INLINE_SIZE = 160;
   const AVATAR_EXPORT_QUALITY = 0.72;
   const PASSTHROUGH_AVATAR_CONTENT_TYPES = new Set(["image/gif", "image/webp", "video/mp4", "video/webm"]);
+  const STORAGE_AVATAR_CONTENT_TYPES = new Set(["image/gif", "image/webp", "video/mp4", "video/webm"]);
   const PROFILE_COMMENT_MAX_LENGTH = 280;
   const PROFILE_LOOKUP_TIMEOUT_MS = 5000;
   const DISPLAY_NAME_MAX_LENGTH = 48;
@@ -204,6 +213,21 @@
     }
 
     return canvas.toDataURL("image/jpeg", AVATAR_EXPORT_QUALITY);
+  };
+
+  const getAvatarStorageExtension = (file) => {
+    switch (file?.type) {
+      case "image/gif":
+        return "gif";
+      case "image/webp":
+        return "webp";
+      case "video/mp4":
+        return "mp4";
+      case "video/webm":
+        return "webm";
+      default:
+        return null;
+    }
   };
 
   const getErrorCode = (error) =>
@@ -789,9 +813,12 @@
     const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
+    const storage = getStorage(app);
     const provider = new GoogleAuthProvider();
 
     const userRefFor = (uid) => doc(db, "users", uid);
+    const avatarStorageRefFor = (uid, extension) =>
+      storageRef(storage, \`avatars/\${uid}/avatar.\${extension}\`);
     const countersRef = doc(db, "meta", "counters");
     const usersCollection = collection(db, "users");
     const profileCommentsCollection = collection(db, "profileComments");
@@ -1006,6 +1033,46 @@
       );
 
       return snapshot.empty ? null : snapshot.docs[0];
+    };
+    const uploadAvatarToStorage = async (uid, file) => {
+      const extension = getAvatarStorageExtension(file);
+
+      if (!extension) {
+        return null;
+      }
+
+      const avatarRef = avatarStorageRefFor(uid, extension);
+
+      await uploadBytes(avatarRef, file, {
+        contentType: file.type,
+        cacheControl: "public,max-age=3600",
+      });
+
+      const downloadURL = await getDownloadURL(avatarRef);
+      return \`\${downloadURL}\${downloadURL.includes("?") ? "&" : "?"}v=\${Date.now()}\`;
+    };
+    const deleteAvatarFromStorage = async (uid) => {
+      const extensions = ["gif", "webp", "mp4", "webm"];
+
+      await Promise.all(
+        extensions.map(async (extension) => {
+          try {
+            await deleteObject(avatarStorageRefFor(uid, extension));
+          } catch (error) {
+            const errorCode = getErrorCode(error);
+
+            if (
+              errorCode === "storage/object-not-found" ||
+              errorCode === "storage/unknown" ||
+              errorCode === "object-not-found"
+            ) {
+              return;
+            }
+
+            throw error;
+          }
+        })
+      );
     };
 
     const toAnonymousViewerSnapshot = (user) => ({
@@ -1988,8 +2055,9 @@
         );
       }
 
-      const inlinePhotoURL = await createInlineAvatarDataUrl(file);
-      const photoURL = inlinePhotoURL;
+      const photoURL = STORAGE_AVATAR_CONTENT_TYPES.has(file.type)
+        ? await uploadAvatarToStorage(user.uid, file)
+        : await createInlineAvatarDataUrl(file);
       const userRef = userRefFor(user.uid);
       const existingSnapshot = await getDoc(userRef);
       const existingData = existingSnapshot.exists() ? existingSnapshot.data() : {};
@@ -2031,7 +2099,7 @@
         }
       }
 
-      if (!persistedInFirestore) {
+      if (!persistedInFirestore || !photoURL) {
         throw createFirebaseError(
           "avatar/persist-failed",
           "Avatar could not be saved. Check Firestore rules for users/{uid}."
@@ -2065,6 +2133,12 @@
 
       if (!hasStoredProfileRecord) {
         await resolveUserSnapshot(user);
+      }
+
+      try {
+        await deleteAvatarFromStorage(user.uid);
+      } catch (error) {
+        console.error("Failed to delete avatar file from storage:", error);
       }
 
       try {
@@ -2247,7 +2321,9 @@
         return null;
       }
 
-      const photoURL = await createInlineAvatarDataUrl(file);
+      const photoURL = STORAGE_AVATAR_CONTENT_TYPES.has(file.type)
+        ? await uploadAvatarToStorage(targetDoc.id, file)
+        : await createInlineAvatarDataUrl(file);
 
       try {
         await setDoc(
@@ -2263,6 +2339,13 @@
           throw error;
         }
 
+        throw createFirebaseError(
+          "avatar/persist-failed",
+          "Avatar could not be saved. Check Firestore rules for privileged users."
+        );
+      }
+
+      if (!photoURL) {
         throw createFirebaseError(
           "avatar/persist-failed",
           "Avatar could not be saved. Check Firestore rules for privileged users."
@@ -2285,6 +2368,12 @@
 
       if (!targetDoc) {
         return null;
+      }
+
+      try {
+        await deleteAvatarFromStorage(targetDoc.id);
+      } catch (error) {
+        console.error("Failed to delete avatar file from storage:", error);
       }
 
       try {
