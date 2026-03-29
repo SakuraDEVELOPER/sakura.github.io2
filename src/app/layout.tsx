@@ -1292,37 +1292,10 @@ const firebaseModuleScript = `
       const existingData = existingSnapshot.exists() ? existingSnapshot.data() : {};
       const hasStoredProfileRecord =
         existingSnapshot.exists() && typeof existingData?.profileId === "number";
-      const previousLogin =
-        typeof existingData?.login === "string" ? existingData.login.trim() : null;
-      const existingDisplayName =
-        typeof existingData?.displayName === "string" ? existingData.displayName.trim() : null;
-      const authDisplayName =
-        typeof user.displayName === "string" ? user.displayName.trim() : null;
-      const shouldSyncDisplayName =
-        !existingDisplayName ||
-        (previousLogin !== null &&
-          (existingDisplayName === previousLogin || authDisplayName === previousLogin));
-      const nextDisplayName = shouldSyncDisplayName
-        ? usernameDetails.login
-        : existingDisplayName ?? authDisplayName ?? usernameDetails.login;
-      const syncAuthDisplayNameIfNeeded = async () => {
-        if (shouldSyncDisplayName && authDisplayName !== nextDisplayName) {
-          try {
-            await updateProfile(user, { displayName: nextDisplayName });
-          } catch (error) {
-            console.error("Failed to sync Firebase Auth displayName after username change:", error);
-          }
-        }
-      };
-
       if (!hasStoredProfileRecord) {
-        const recoveredSnapshot = await resolveUserSnapshot(user, {
+        return resolveUserSnapshot(user, {
           requestedLogin: usernameDetails.login,
-          preferredDisplayName: nextDisplayName,
         });
-
-        await syncAuthDisplayNameIfNeeded();
-        return recoveredSnapshot;
       }
 
       try {
@@ -1331,7 +1304,6 @@ const firebaseModuleScript = `
           {
             login: usernameDetails.login,
             loginLower: usernameDetails.loginLower,
-            ...(shouldSyncDisplayName ? { displayName: nextDisplayName } : {}),
             updatedAt: new Date().toISOString(),
           },
           { merge: true }
@@ -1342,13 +1314,9 @@ const firebaseModuleScript = `
         }
 
         if (!hasStoredProfileRecord) {
-          const recoveredSnapshot = await resolveUserSnapshot(user, {
+          return resolveUserSnapshot(user, {
             requestedLogin: usernameDetails.login,
-            preferredDisplayName: nextDisplayName,
           });
-
-          await syncAuthDisplayNameIfNeeded();
-          return recoveredSnapshot;
         }
 
         throw createFirebaseError(
@@ -1357,14 +1325,11 @@ const firebaseModuleScript = `
         );
       }
 
-      await syncAuthDisplayNameIfNeeded();
-
       const snapshot = publishUserSnapshot(
         toUserSnapshot(user, {
           ...existingData,
           login: usernameDetails.login,
           loginLower: usernameDetails.loginLower,
-          displayName: nextDisplayName,
         })
       );
 
