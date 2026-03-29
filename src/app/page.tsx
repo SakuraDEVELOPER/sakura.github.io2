@@ -1270,7 +1270,7 @@ export default function Home() {
             <button
               type="button"
               onClick={handleHeroTrialClick}
-              className="inline-flex items-center justify-center bg-[#ffb7c5] px-10 py-4 text-sm font-bold uppercase text-black shadow-[0_0_30px_rgba(255,183,197,0.2)] transition-all hover:bg-[#ffcdd7] active:scale-95"
+              className="inline-flex items-center justify-center rounded-full border border-[#ff3b30]/70 bg-[#130d0f] px-8 py-3 text-sm font-semibold text-[#ffd0d7] shadow-[0_0_24px_rgba(255,59,48,0.18)] transition-all hover:border-[#ff6b5e] hover:bg-[#1a1012] hover:text-white active:scale-95"
             >
               Тестовый период на 7 дней
             </button>
@@ -1290,6 +1290,7 @@ export default function Home() {
           />
         </section>
 
+        <FeatureShowcase />
         <SetupSteps />
         <DownloadSection />
       </div>
@@ -1313,10 +1314,10 @@ function FeatureBox({
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
       transition={{ duration: 0.5, delay }}
-      className="border border-[#1a1a1a] bg-[#0d0d0d] p-8 transition-colors duration-500 hover:border-[#ffb7c5]/50"
+      className="rounded-[28px] border border-[#2b1b1e] bg-[radial-gradient(circle_at_top_left,rgba(255,90,105,0.09),transparent_55%),#0d0d0d] p-8 shadow-[0_0_30px_rgba(255,59,48,0.06)] transition-all duration-500 hover:border-[#ff6b5e]/60 hover:shadow-[0_0_38px_rgba(255,59,48,0.1)]"
     >
-      <h3 className="mb-4 font-mono text-[10px] uppercase tracking-[0.2em] text-gray-500">{title}</h3>
-      <p className="text-sm leading-snug text-gray-300">{desc}</p>
+      <h3 className="mb-4 font-mono text-[10px] uppercase tracking-[0.28em] text-[#ffb7c5]/70">{title}</h3>
+      <p className="max-w-[40rem] text-sm leading-relaxed text-gray-300">{desc}</p>
     </m.div>
   );
 }
@@ -1338,7 +1339,7 @@ function BottomInfoSection() {
   );
 }
 
-function FeatureShowcase() {
+function LegacyFeatureShowcase() {
   const [activeSlide, setActiveSlide] = useState(0);
   const [previewSlide, setPreviewSlide] = useState<ShowcaseSlide | null>(null);
   const [isPreviewZoomed, setIsPreviewZoomed] = useState(false);
@@ -1802,6 +1803,132 @@ function FeatureShowcase() {
         </div>
       ) : null}
     </>
+  );
+}
+
+function FeatureShowcase() {
+  const [activeSlide, setActiveSlide] = useState(0);
+  const slide = showcaseSlides[activeSlide];
+
+  const goToPrevious = () => {
+    setActiveSlide((current) => (current - 1 + showcaseSlides.length) % showcaseSlides.length);
+  };
+
+  const goToNext = () => {
+    setActiveSlide((current) => (current + 1) % showcaseSlides.length);
+  };
+
+  return (
+    <section id="feature-showcase" className="border-t border-[#1a1a1a] px-10 py-24">
+      <div className="mx-auto max-w-6xl">
+        <div className="mb-12">
+          <p className="mb-4 font-mono text-[10px] uppercase tracking-[0.4em] text-[#ffb7c5]">
+            Feature Showcase
+          </p>
+          <h2 className="max-w-2xl text-4xl font-black uppercase tracking-tighter text-white">
+            Р›РёСЃС‚Р°Р№ РєР°СЂС‚РѕС‡РєРё
+          </h2>
+        </div>
+
+        <div className="grid items-stretch gap-8 lg:grid-cols-[0.85fr_1.15fr]">
+          <m.div
+            key={`copy-${slide.id}`}
+            initial={{ opacity: 0, y: 24 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, amount: 0.25 }}
+            transition={{ duration: 0.35 }}
+            className="flex min-h-[420px] flex-col justify-between rounded-[28px] border border-[#2b1b1e] bg-[radial-gradient(circle_at_top_left,rgba(255,90,105,0.09),transparent_55%),#0d0d0d] p-8 shadow-[0_0_30px_rgba(255,59,48,0.06)]"
+          >
+            <div>
+              <span className="mb-6 inline-flex rounded-full border border-[#2b1b1e] bg-[#1a1012] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.35em] text-[#ffb7c5]">
+                {slide.index}
+              </span>
+              <h3 className="mb-4 text-3xl font-black uppercase tracking-tighter text-white">
+                {slide.title}
+              </h3>
+              <p className="max-w-md text-sm leading-relaxed text-gray-400">{slide.desc}</p>
+            </div>
+
+            <div className="rounded-[24px] border border-[#2b1b1e] bg-black/30 p-5">
+              <span className="mb-3 block font-mono text-[10px] uppercase tracking-[0.35em] text-[#ffb7c5]/60">
+                Preview
+              </span>
+              <p className="text-sm leading-relaxed text-gray-500">
+                Скриншоты для этого блока скоро будут добавлены.
+              </p>
+            </div>
+          </m.div>
+
+          <div className="relative flex items-center px-4 md:px-8">
+            <button
+              type="button"
+              onClick={goToPrevious}
+              aria-label="Предыдущая карточка"
+              className="absolute -left-2 z-10 flex h-12 w-12 items-center justify-center rounded-full border border-[#2b1b1e] bg-[#130d0f] text-[#ffb7c5] shadow-[0_0_20px_rgba(255,59,48,0.08)] transition hover:border-[#ff6b5e]/50 hover:bg-[#1a1012] md:-left-6"
+            >
+              ←
+            </button>
+
+            <m.div
+              key={`media-placeholder-${slide.id}`}
+              initial={{ opacity: 0, x: 18 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true, amount: 0.25 }}
+              transition={{ duration: 0.35 }}
+              className="w-full"
+            >
+              <div className="relative overflow-hidden rounded-[32px] border border-[#2b1b1e] bg-[radial-gradient(circle_at_top_left,rgba(255,90,105,0.08),transparent_50%),#090909]">
+                <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-black/60 via-black/20 to-transparent"></div>
+                <div className="absolute inset-x-8 top-8 flex items-center justify-between">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.35em] text-[#ffb7c5]">
+                    {slide.mediaOverlayTitle}
+                  </span>
+                  <span className="rounded-full border border-[#2b1b1e] bg-[#1a1012] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.25em] text-[#ffb7c5]/70">
+                    Coming soon
+                  </span>
+                </div>
+                <div className="flex aspect-[16/9] items-center justify-center px-8 py-10">
+                  <div className="flex w-full max-w-[28rem] flex-col items-center justify-center rounded-[28px] border border-dashed border-[#ffb7c5]/25 bg-black/25 px-8 py-12 text-center">
+                    <span className="mb-4 inline-flex rounded-full border border-[#2b1b1e] bg-[#130d0f] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.28em] text-[#ffb7c5]">
+                      Screenshots
+                    </span>
+                    <p className="text-xl font-black uppercase tracking-[0.04em] text-white">
+                      Placeholder
+                    </p>
+                    <p className="mt-3 max-w-sm text-sm leading-relaxed text-gray-500">
+                      Блок со скриншотами возвращён, но сами изображения будут добавлены позже.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6 flex items-center justify-center gap-3">
+                {showcaseSlides.map((item, index) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    aria-label={`Перейти к карточке ${index + 1}`}
+                    onClick={() => setActiveSlide(index)}
+                    className={`h-2.5 rounded-full transition-all ${
+                      index === activeSlide ? "w-8 bg-[#ffb7c5]" : "w-2.5 bg-white/20 hover:bg-white/40"
+                    }`}
+                  />
+                ))}
+              </div>
+            </m.div>
+
+            <button
+              type="button"
+              onClick={goToNext}
+              aria-label="Следующая карточка"
+              className="absolute -right-2 z-10 flex h-12 w-12 items-center justify-center rounded-full border border-[#2b1b1e] bg-[#130d0f] text-[#ffb7c5] shadow-[0_0_20px_rgba(255,59,48,0.08)] transition hover:border-[#ff6b5e]/50 hover:bg-[#1a1012] md:-right-6"
+            >
+              →
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
