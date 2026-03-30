@@ -9,6 +9,7 @@ import { AvatarMedia } from "./avatar-media";
 import { HeaderSocialLinks } from "./header-social-links";
 import { SiteOnlineBadge } from "./site-online-badge";
 import { readCachedAuthSnapshot } from "@/lib/auth-snapshot-cache";
+import { readCachedSiteOnlineCount, writeCachedSiteOnlineCount } from "@/lib/site-online-cache";
 
 type ShowcaseSlide = {
   id: string;
@@ -1607,7 +1608,9 @@ function HeaderAuth() {
 }
 
 export default function Home() {
-  const [siteOnlineCount, setSiteOnlineCount] = useState<number | null>(null);
+  const [siteOnlineCount, setSiteOnlineCount] = useState<number | null>(() =>
+    readCachedSiteOnlineCount()
+  );
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1635,6 +1638,7 @@ export default function Home() {
 
         if (!isCancelled) {
           setSiteOnlineCount(nextCount);
+          writeCachedSiteOnlineCount(nextCount);
         }
       } catch (error) {
       } finally {

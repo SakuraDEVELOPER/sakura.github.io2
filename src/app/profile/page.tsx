@@ -18,6 +18,7 @@ import { isSupabaseConfigured } from "@/lib/supabase";
 import { readCachedAuthSnapshot } from "@/lib/auth-snapshot-cache";
 import { readCachedProfileSnapshot, writeCachedProfileSnapshot } from "@/lib/profile-cache";
 import { readCachedProfileComments, writeCachedProfileComments } from "@/lib/profile-comments-cache";
+import { readCachedSiteOnlineCount, writeCachedSiteOnlineCount } from "@/lib/site-online-cache";
 
 type UserProfile = {
   uid: string;
@@ -1118,7 +1119,9 @@ export default function ProfilePage() {
   const [isCommentUpdating, setIsCommentUpdating] = useState(false);
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
   const [confirmingCommentDeleteId, setConfirmingCommentDeleteId] = useState<string | null>(null);
-  const [siteOnlineCount, setSiteOnlineCount] = useState<number | null>(null);
+  const [siteOnlineCount, setSiteOnlineCount] = useState<number | null>(() =>
+    readCachedSiteOnlineCount()
+  );
   const [profileThemeIsPlaying, setProfileThemeIsPlaying] = useState(false);
   const [profileThemeCurrentTime, setProfileThemeCurrentTime] = useState(0);
   const [profileThemeDuration, setProfileThemeDuration] = useState(0);
@@ -1127,6 +1130,7 @@ export default function ProfilePage() {
   const commentTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const profileThemeAudioRef = useRef<HTMLAudioElement | null>(null);
   const profileThemeAutoplayAttemptedRef = useRef<string | null>(null);
+  const mentionSuggestionsCacheRef = useRef<Record<string, UserProfile[]>>({});
   const editingCommentTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const commentMediaInputRef = useRef<HTMLInputElement | null>(null);
   const editingCommentMediaInputRef = useRef<HTMLInputElement | null>(null);
@@ -1319,6 +1323,7 @@ export default function ProfilePage() {
 
         if (!isCancelled) {
           setSiteOnlineCount(nextCount);
+          writeCachedSiteOnlineCount(nextCount);
         }
       } catch (error) {
       } finally {
@@ -2495,8 +2500,7 @@ export default function ProfilePage() {
     const cachedComments = readCachedProfileComments<ProfileComment>(activeProfile.profileId);
 
     setComments(cachedComments);
-
-    setIsCommentsLoading(true);
+    setIsCommentsLoading(!cachedComments.length);
     setCommentsError(null);
 
     bridge
@@ -2773,6 +2777,14 @@ export default function ProfilePage() {
     }
 
     let isCancelled = false;
+    const cachedSuggestions = mentionSuggestionsCacheRef.current[activeMentionDraft.query];
+
+    if (cachedSuggestions) {
+      setIsMentionSuggestionsLoading(false);
+      setMentionSuggestions(cachedSuggestions);
+      return;
+    }
+
     setIsMentionSuggestionsLoading(true);
     setMentionSuggestions([]);
     const searchTimeout = window.setTimeout(() => {
@@ -2783,12 +2795,13 @@ export default function ProfilePage() {
             return;
           }
 
-          setMentionSuggestions(
-            profiles.filter((profile, index, entries) =>
-              Boolean(profile.login) &&
-              index === entries.findIndex((entry) => entry.uid === profile.uid)
-            )
+          const normalizedProfiles = profiles.filter((profile, index, entries) =>
+            Boolean(profile.login) &&
+            index === entries.findIndex((entry) => entry.uid === profile.uid)
           );
+
+          mentionSuggestionsCacheRef.current[activeMentionDraft.query] = normalizedProfiles;
+          setMentionSuggestions(normalizedProfiles);
         })
         .catch(() => {
           if (!isCancelled) {

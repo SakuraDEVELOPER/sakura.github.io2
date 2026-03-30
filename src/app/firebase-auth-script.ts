@@ -98,6 +98,9 @@
   const PROFILE_COMMENT_MEDIA_EXPORT_QUALITY_STEP = 0.08;
   const PROFILE_COMMENT_MEDIA_MAX_DATA_URL_LENGTH = 760000;
   const PROFILE_LOOKUP_TIMEOUT_MS = 5000;
+  const PROFILE_RUNTIME_CACHE_TTL_MS = 2 * 60 * 1000;
+  const PROFILE_SEARCH_RUNTIME_CACHE_TTL_MS = 45 * 1000;
+  const ONLINE_USERS_RUNTIME_CACHE_TTL_MS = 8 * 1000;
   const PRESENCE_ONLINE_WINDOW_MS = 90 * 1000;
   const PRESENCE_HEARTBEAT_INTERVAL_MS = 45 * 1000;
   const PRESENCE_VISIT_RECORD_COOLDOWN_MS = 5 * 60 * 1000;
@@ -113,6 +116,11 @@
   const AUTH_SNAPSHOT_CACHE_STORAGE_KEY = "sakura-auth-snapshot-v1";
   const AVATAR_CONTENT_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "video/mp4", "video/webm"]);
   const LOGIN_PATTERN = /^[A-Za-z\u0400-\u04FF0-9._-]+$/;
+  const profileByIdRuntimeCache = new Map();
+  const profileByAuthorRuntimeCache = new Map();
+  const profilesByPrefixRuntimeCache = new Map();
+  const siteOnlineUsersRuntimeCache = new Map();
+  const runtimePendingLookupCache = new Map();
 
   const createFirebaseError = (code, message) => {
     const error = new Error(message);
@@ -1368,6 +1376,7 @@
     };
 
     const broadcastPresenceDirty = () => {
+      siteOnlineUsersRuntimeCache.delete("all");
       window.dispatchEvent(new CustomEvent(PRESENCE_DIRTY_EVENT));
     };
 
@@ -1397,6 +1406,7 @@
 
     const publishUserSnapshot = (snapshot) => {
       window.sakuraCurrentUserSnapshot = snapshot;
+      cacheResolvedProfileSnapshot(snapshot);
       persistCachedAuthSnapshot(snapshot);
       try {
         if (typeof snapshot?.profileId === "number" && snapshot.profileId > 0) {
@@ -1563,6 +1573,91 @@
       }
 
       return actorSnapshot;
+    };
+    const readRuntimeCacheEntry = (cache, key) => {
+      if (!cache.has(key)) {
+        return { hit: false, value: null };
+      }
+
+      const cachedEntry = cache.get(key);
+
+      if (!cachedEntry || cachedEntry.expiresAt <= Date.now()) {
+        cache.delete(key);
+        return { hit: false, value: null };
+      }
+
+      return { hit: true, value: cachedEntry.value };
+    };
+    const writeRuntimeCacheEntry = (cache, key, value, ttlMs) => {
+      cache.set(key, {
+        value,
+        expiresAt: Date.now() + ttlMs,
+      });
+
+      return value;
+    };
+    const runCachedLookup = async (cache, key, ttlMs, pendingKey, loader) => {
+      const cachedEntry = readRuntimeCacheEntry(cache, key);
+
+      if (cachedEntry.hit) {
+        return cachedEntry.value;
+      }
+
+      if (runtimePendingLookupCache.has(pendingKey)) {
+        return runtimePendingLookupCache.get(pendingKey);
+      }
+
+      const pendingLookup = Promise.resolve()
+        .then(loader)
+        .then((value) => {
+          writeRuntimeCacheEntry(cache, key, value, ttlMs);
+          runtimePendingLookupCache.delete(pendingKey);
+          return value;
+        })
+        .catch((error) => {
+          runtimePendingLookupCache.delete(pendingKey);
+          throw error;
+        });
+
+      runtimePendingLookupCache.set(pendingKey, pendingLookup);
+      return pendingLookup;
+    };
+    const cacheResolvedProfileSnapshot = (snapshot) => {
+      if (!snapshot || snapshot.isAnonymous) {
+        return snapshot;
+      }
+
+      if (typeof snapshot.profileId === "number" && snapshot.profileId > 0) {
+        writeRuntimeCacheEntry(
+          profileByIdRuntimeCache,
+          String(snapshot.profileId),
+          snapshot,
+          PROFILE_RUNTIME_CACHE_TTL_MS
+        );
+      }
+
+      const normalizedLogin = normalizeLogin(snapshot.login);
+      const normalizedDisplayName = normalizeProfileCommentAuthorName(snapshot.displayName);
+
+      if (normalizedLogin) {
+        writeRuntimeCacheEntry(
+          profileByAuthorRuntimeCache,
+          normalizedLogin,
+          snapshot,
+          PROFILE_RUNTIME_CACHE_TTL_MS
+        );
+      }
+
+      if (normalizedDisplayName) {
+        writeRuntimeCacheEntry(
+          profileByAuthorRuntimeCache,
+          normalizedDisplayName,
+          snapshot,
+          PROFILE_RUNTIME_CACHE_TTL_MS
+        );
+      }
+
+      return snapshot;
     };
 
     const findUserByLogin = async (loginLower) => {
@@ -2523,71 +2618,90 @@
         return window.sakuraCurrentUserSnapshot;
       }
 
-      const readProfileDoc = async () =>
-        withTimeout(
-          findUserByProfileId(profileId),
-          PROFILE_LOOKUP_TIMEOUT_MS,
-          () =>
-            createFirebaseError(
-              "profile/load-timeout",
-              "Profile loading took too long. Refresh the page and try again."
-            )
-        );
+      const cachedProfileSnapshot = readRuntimeCacheEntry(
+        profileByIdRuntimeCache,
+        String(profileId)
+      );
 
-      let profileDoc = null;
-      let publicReadDenied = false;
-
-      try {
-        profileDoc = await readProfileDoc();
-      } catch (error) {
-        if (!isPermissionDeniedError(error)) {
-          throw error;
-        }
-
-        publicReadDenied = true;
+      if (cachedProfileSnapshot.hit) {
+        return cachedProfileSnapshot.value;
       }
 
-      if (!publicReadDenied) {
-        return profileDoc ? toStoredUserSnapshot(profileDoc.id, profileDoc.data()) : null;
-      }
+      return runCachedLookup(
+        profileByIdRuntimeCache,
+        String(profileId),
+        PROFILE_RUNTIME_CACHE_TTL_MS,
+        "profile-by-id:" + profileId,
+        async () => {
+          const readProfileDoc = async () =>
+            withTimeout(
+              findUserByProfileId(profileId),
+              PROFILE_LOOKUP_TIMEOUT_MS,
+              () =>
+                createFirebaseError(
+                  "profile/load-timeout",
+                  "Profile loading took too long. Refresh the page and try again."
+                )
+            );
 
-      await waitForAuthStateSettlement();
+          let profileDoc = null;
+          let publicReadDenied = false;
 
-      if (auth.currentUser && !auth.currentUser.isAnonymous) {
-        try {
-          profileDoc = await readProfileDoc();
-          return profileDoc ? toStoredUserSnapshot(profileDoc.id, profileDoc.data()) : null;
-        } catch (error) {
-          if (!isPermissionDeniedError(error)) {
+          try {
+            profileDoc = await readProfileDoc();
+          } catch (error) {
+            if (!isPermissionDeniedError(error)) {
+              throw error;
+            }
+
+            publicReadDenied = true;
+          }
+
+          if (!publicReadDenied) {
+            return cacheResolvedProfileSnapshot(
+              profileDoc ? toStoredUserSnapshot(profileDoc.id, profileDoc.data()) : null
+            );
+          }
+
+          await waitForAuthStateSettlement();
+
+          if (auth.currentUser && !auth.currentUser.isAnonymous) {
+            try {
+              profileDoc = await readProfileDoc();
+              return cacheResolvedProfileSnapshot(
+                profileDoc ? toStoredUserSnapshot(profileDoc.id, profileDoc.data()) : null
+              );
+            } catch (error) {
+              if (!isPermissionDeniedError(error)) {
+                throw error;
+              }
+            }
+          }
+
+          const viewer = await ensureProfileViewer();
+
+          if (viewer.isAnonymous) {
+            publishUserSnapshot(toAnonymousViewerSnapshot(viewer));
+          }
+
+          try {
+            profileDoc = await readProfileDoc();
+          } catch (error) {
+            if (isPermissionDeniedError(error)) {
+              throw createFirebaseError(
+                "profile/public-view-denied",
+                "Public profile viewing is blocked by Firestore rules. Allow public read access or anonymous users to read users collection."
+              );
+            }
+
             throw error;
           }
-        }
-      }
 
-      const viewer = await ensureProfileViewer();
-
-      if (viewer.isAnonymous) {
-        publishUserSnapshot(toAnonymousViewerSnapshot(viewer));
-      }
-
-      try {
-        profileDoc = await readProfileDoc();
-      } catch (error) {
-        if (isPermissionDeniedError(error)) {
-          throw createFirebaseError(
-            "profile/public-view-denied",
-            "Public profile viewing is blocked by Firestore rules. Allow public read access or anonymous users to read users collection."
+          return cacheResolvedProfileSnapshot(
+            profileDoc ? toStoredUserSnapshot(profileDoc.id, profileDoc.data()) : null
           );
         }
-
-        throw error;
-      }
-
-      if (!profileDoc) {
-        return null;
-      }
-
-      return toStoredUserSnapshot(profileDoc.id, profileDoc.data());
+      );
     };
 
     const getProfileByAuthorName = async (authorName) => {
@@ -2597,67 +2711,90 @@
         return null;
       }
 
-      const readProfileDoc = async () =>
-        withTimeout(
-          findUserByAuthorName(normalizedAuthorName),
-          PROFILE_LOOKUP_TIMEOUT_MS,
-          () =>
-            createFirebaseError(
-              "profile/load-timeout",
-              "Profile loading took too long. Refresh the page and try again."
-            )
-        );
+      const cachedProfileSnapshot = readRuntimeCacheEntry(
+        profileByAuthorRuntimeCache,
+        normalizedAuthorName
+      );
 
-      let profileDoc = null;
-      let publicReadDenied = false;
-
-      try {
-        profileDoc = await readProfileDoc();
-      } catch (error) {
-        if (!isPermissionDeniedError(error)) {
-          throw error;
-        }
-
-        publicReadDenied = true;
+      if (cachedProfileSnapshot.hit) {
+        return cachedProfileSnapshot.value;
       }
 
-      if (!publicReadDenied) {
-        return profileDoc ? toStoredUserSnapshot(profileDoc.id, profileDoc.data()) : null;
-      }
+      return runCachedLookup(
+        profileByAuthorRuntimeCache,
+        normalizedAuthorName,
+        PROFILE_RUNTIME_CACHE_TTL_MS,
+        "profile-by-author:" + normalizedAuthorName,
+        async () => {
+          const readProfileDoc = async () =>
+            withTimeout(
+              findUserByAuthorName(normalizedAuthorName),
+              PROFILE_LOOKUP_TIMEOUT_MS,
+              () =>
+                createFirebaseError(
+                  "profile/load-timeout",
+                  "Profile loading took too long. Refresh the page and try again."
+                )
+            );
 
-      await waitForAuthStateSettlement();
+          let profileDoc = null;
+          let publicReadDenied = false;
 
-      if (auth.currentUser && !auth.currentUser.isAnonymous) {
-        try {
-          profileDoc = await readProfileDoc();
-          return profileDoc ? toStoredUserSnapshot(profileDoc.id, profileDoc.data()) : null;
-        } catch (error) {
-          if (!isPermissionDeniedError(error)) {
+          try {
+            profileDoc = await readProfileDoc();
+          } catch (error) {
+            if (!isPermissionDeniedError(error)) {
+              throw error;
+            }
+
+            publicReadDenied = true;
+          }
+
+          if (!publicReadDenied) {
+            return cacheResolvedProfileSnapshot(
+              profileDoc ? toStoredUserSnapshot(profileDoc.id, profileDoc.data()) : null
+            );
+          }
+
+          await waitForAuthStateSettlement();
+
+          if (auth.currentUser && !auth.currentUser.isAnonymous) {
+            try {
+              profileDoc = await readProfileDoc();
+              return cacheResolvedProfileSnapshot(
+                profileDoc ? toStoredUserSnapshot(profileDoc.id, profileDoc.data()) : null
+              );
+            } catch (error) {
+              if (!isPermissionDeniedError(error)) {
+                throw error;
+              }
+            }
+          }
+
+          const viewer = await ensureProfileViewer();
+
+          if (viewer.isAnonymous) {
+            publishUserSnapshot(toAnonymousViewerSnapshot(viewer));
+          }
+
+          try {
+            profileDoc = await readProfileDoc();
+          } catch (error) {
+            if (isPermissionDeniedError(error)) {
+              throw createFirebaseError(
+                "profile/public-view-denied",
+                "Public profile viewing is blocked by Firestore rules. Allow public read access or anonymous users to read users collection."
+              );
+            }
+
             throw error;
           }
-        }
-      }
 
-      const viewer = await ensureProfileViewer();
-
-      if (viewer.isAnonymous) {
-        publishUserSnapshot(toAnonymousViewerSnapshot(viewer));
-      }
-
-      try {
-        profileDoc = await readProfileDoc();
-      } catch (error) {
-        if (isPermissionDeniedError(error)) {
-          throw createFirebaseError(
-            "profile/public-view-denied",
-            "Public profile viewing is blocked by Firestore rules. Allow public read access or anonymous users to read users collection."
+          return cacheResolvedProfileSnapshot(
+            profileDoc ? toStoredUserSnapshot(profileDoc.id, profileDoc.data()) : null
           );
         }
-
-        throw error;
-      }
-
-      return profileDoc ? toStoredUserSnapshot(profileDoc.id, profileDoc.data()) : null;
+      );
     };
     const getProfilesByLoginPrefix = async (loginPrefix) => {
       const normalizedPrefix = normalizeLogin(loginPrefix);
@@ -2666,24 +2803,32 @@
         return [];
       }
 
-      const snapshot = await withTimeout(
-        findUsersByLoginPrefix(normalizedPrefix),
-        PROFILE_LOOKUP_TIMEOUT_MS,
-        () =>
-          createFirebaseError(
-            "profile/load-timeout",
-            "Profile search took too long. Refresh the page and try again."
-          )
-      );
+      return runCachedLookup(
+        profilesByPrefixRuntimeCache,
+        normalizedPrefix,
+        PROFILE_SEARCH_RUNTIME_CACHE_TTL_MS,
+        "profiles-by-prefix:" + normalizedPrefix,
+        async () => {
+          const snapshot = await withTimeout(
+            findUsersByLoginPrefix(normalizedPrefix),
+            PROFILE_LOOKUP_TIMEOUT_MS,
+            () =>
+              createFirebaseError(
+                "profile/load-timeout",
+                "Profile search took too long. Refresh the page and try again."
+              )
+          );
 
-      return snapshot
-        .map((profileDoc) => toStoredUserSnapshot(profileDoc.id, profileDoc.data()))
-        .filter(
-          (profile, index, profiles) =>
-            typeof profile.login === "string" &&
-            normalizeLogin(profile.login)?.startsWith(normalizedPrefix) &&
-            index === profiles.findIndex((candidate) => candidate.uid === profile.uid)
-        );
+          return snapshot
+            .map((profileDoc) => cacheResolvedProfileSnapshot(toStoredUserSnapshot(profileDoc.id, profileDoc.data())))
+            .filter(
+              (profile, index, profiles) =>
+                typeof profile.login === "string" &&
+                normalizeLogin(profile.login)?.startsWith(normalizedPrefix) &&
+                index === profiles.findIndex((candidate) => candidate.uid === profile.uid)
+            );
+        }
+      );
     };
 
     const getProfileComments = async (profileId) => {
@@ -3865,31 +4010,39 @@
         );
       }
     };
+    const getCachedSiteOnlineUsers = async () =>
+      runCachedLookup(
+        siteOnlineUsersRuntimeCache,
+        "all",
+        ONLINE_USERS_RUNTIME_CACHE_TTL_MS,
+        "site-online-users:all",
+        async () => {
+          const onlineUsers = await getFreshOnlineUsers();
+
+          return onlineUsers.map((snapshot) => ({
+            uid: snapshot?.uid ?? null,
+            profileId: typeof snapshot?.profileId === "number" ? snapshot.profileId : null,
+            displayName:
+              typeof snapshot?.displayName === "string" ? snapshot.displayName : null,
+            login: typeof snapshot?.login === "string" ? snapshot.login : null,
+            photoURL: typeof snapshot?.photoURL === "string" ? snapshot.photoURL : null,
+            accentRole: pickCommentAccentRole(snapshot?.roles ?? []) ?? null,
+            presence: snapshot?.presence
+              ? {
+                  lastSeenAt:
+                    typeof snapshot.presence.lastSeenAt === "string"
+                      ? snapshot.presence.lastSeenAt
+                      : null,
+                }
+              : null,
+          }));
+        }
+      );
     const getSiteOnlineCount = async () => {
-      const onlineUsers = await getFreshOnlineUsers();
+      const onlineUsers = await getCachedSiteOnlineUsers();
       return onlineUsers.length;
     };
-    const getSiteOnlineUsers = async () => {
-      const onlineUsers = await getFreshOnlineUsers();
-
-      return onlineUsers.map((snapshot) => ({
-        uid: snapshot?.uid ?? null,
-        profileId: typeof snapshot?.profileId === "number" ? snapshot.profileId : null,
-        displayName:
-          typeof snapshot?.displayName === "string" ? snapshot.displayName : null,
-        login: typeof snapshot?.login === "string" ? snapshot.login : null,
-        photoURL: typeof snapshot?.photoURL === "string" ? snapshot.photoURL : null,
-        accentRole: pickCommentAccentRole(snapshot?.roles ?? []) ?? null,
-        presence: snapshot?.presence
-          ? {
-              lastSeenAt:
-                typeof snapshot.presence.lastSeenAt === "string"
-                  ? snapshot.presence.lastSeenAt
-                  : null,
-            }
-          : null,
-      }));
-    };
+    const getSiteOnlineUsers = async () => getCachedSiteOnlineUsers();
 
     const redirectResultPromise = getRedirectResult(auth).catch((error) => {
       if (getErrorCode(error) !== "auth/no-auth-event") {

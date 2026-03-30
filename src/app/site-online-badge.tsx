@@ -2,6 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AvatarMedia } from "./avatar-media";
+import {
+  readCachedSiteOnlineUsers,
+  writeCachedSiteOnlineUsers,
+} from "@/lib/site-online-cache";
 
 type SiteOnlineUser = {
   uid: string | null;
@@ -141,7 +145,9 @@ export function SiteOnlineBadge({
   const [isHovered, setIsHovered] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [users, setUsers] = useState<SiteOnlineUser[]>([]);
+  const [users, setUsers] = useState<SiteOnlineUser[]>(() =>
+    readCachedSiteOnlineUsers<SiteOnlineUser>()
+  );
   const [loadError, setLoadError] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const isActive = isHovered || isOpen;
@@ -192,7 +198,9 @@ export function SiteOnlineBadge({
         const nextUsers = await runtimeWindow.sakuraFirebaseAuth.getSiteOnlineUsers();
 
         if (!isCancelled) {
-          setUsers(Array.isArray(nextUsers) ? nextUsers : []);
+          const normalizedUsers = Array.isArray(nextUsers) ? nextUsers : [];
+          setUsers(normalizedUsers);
+          writeCachedSiteOnlineUsers(normalizedUsers);
         }
       } catch (error) {
         if (!isCancelled) {
