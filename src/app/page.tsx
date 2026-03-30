@@ -2173,7 +2173,7 @@ function FeatureShowcase() {
   };
 
   return (
-    <section id="feature-showcase" className="border-t border-[#1a1a1a] px-10 py-24">
+    <section id="feature-showcase" className="px-10 py-24">
       <div className="mx-auto max-w-6xl">
         <div className="grid items-stretch gap-8 lg:grid-cols-[0.85fr_1.15fr]">
           <m.div
