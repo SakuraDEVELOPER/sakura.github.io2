@@ -2690,7 +2690,7 @@
         throw createFirebaseError("profile/invalid-id", "Profile id must be a positive number.");
       }
 
-      const normalizedRequestedLogin = String(nextLogin ?? "").trim().replace(/\s+/g, "");
+      const normalizedRequestedLogin = String(nextLogin ?? "").trim().replace(/\\s+/g, "");
 
       if (!normalizedRequestedLogin) {
         throw createFirebaseError("auth/invalid-login", "Enter a login.");
