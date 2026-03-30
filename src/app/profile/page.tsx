@@ -200,7 +200,7 @@ const getProfileActionErrorMessage = (error: unknown, fallback: string) => {
   }
 
   if (code === "comments/delete-forbidden") {
-    return "You can only delete your own comments, comments on your profile, or moderate comments with staff roles.";
+    return "You can only delete your own comments, comments on your profile, or moderate comments with staff roles. Co-owner cannot remove root comments outside their profile.";
   }
 
   if (code === "comments/update-forbidden") {
@@ -874,6 +874,34 @@ const canModerateComments = (roles: string[]) =>
   normalizeRoleSelection(roles).some((role) =>
     COMMENT_MODERATOR_ROLE_NAMES.has(normalizeRoleName(role))
   );
+const canDeleteCommentAsModerator = (
+  actor: Pick<UserProfile, "roles" | "profileId"> | null | undefined,
+  comment: ProfileComment,
+  commentAuthorRole: string | null | undefined
+) => {
+  if (!actor || !canModerateComments(actor.roles)) {
+    return false;
+  }
+
+  if (hasRoleInSelection(actor.roles, "root")) {
+    return true;
+  }
+
+  const ownsTargetProfile =
+    typeof actor.profileId === "number" &&
+    typeof comment.profileId === "number" &&
+    actor.profileId === comment.profileId;
+
+  if (
+    hasRoleInSelection(actor.roles, "co-owner") &&
+    normalizeRoleName(commentAuthorRole ?? "") === "root" &&
+    !ownsTargetProfile
+  ) {
+    return false;
+  }
+
+  return true;
+};
 const deriveVisibleProfileRoles = (
   profile: Pick<UserProfile, "roles" | "isBanned"> | null | undefined
 ) => {
@@ -2108,11 +2136,26 @@ export default function ProfilePage() {
     Boolean(
       visibleCurrentUser &&
         !isCurrentAccountVerificationLocked &&
-        (comment.authorUid === visibleCurrentUser.uid ||
-          canModerateComments(visibleCurrentUser.roles) ||
-          (isOwner &&
+        (() => {
+          const ownsTargetProfile =
+            isOwner &&
             typeof activeProfile?.profileId === "number" &&
-            comment.profileId === activeProfile.profileId))
+            comment.profileId === activeProfile.profileId;
+          const resolvedCommentAuthorRole = resolveCommentAuthorRole(comment);
+
+          return (
+            comment.authorUid === visibleCurrentUser.uid ||
+            ownsTargetProfile ||
+            canDeleteCommentAsModerator(
+              {
+                roles: visibleCurrentUser.roles,
+                profileId: visibleCurrentUser.profileId,
+              },
+              comment,
+              resolvedCommentAuthorRole
+            )
+          );
+        })()
     );
   const canEditComment = (comment: ProfileComment) =>
     Boolean(

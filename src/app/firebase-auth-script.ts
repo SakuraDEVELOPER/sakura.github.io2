@@ -760,6 +760,50 @@
     normalizeRoles(roles).some((role) =>
       COMMENT_MODERATOR_ROLE_NAMES.has(normalizeRoleName(role))
     );
+  const canDeleteCommentAsModerator = async (actorSnapshot, comment) => {
+    const actorRoles = normalizeRoles(actorSnapshot?.roles);
+
+    if (!canModerateComments(actorRoles)) {
+      return false;
+    }
+
+    if (isRootRoleHolder(actorRoles)) {
+      return true;
+    }
+
+    const ownsTargetProfile =
+      typeof actorSnapshot?.profileId === "number" &&
+      typeof comment?.profileId === "number" &&
+      actorSnapshot.profileId === comment.profileId;
+
+    if (
+      isCoOwnerRoleHolder(actorRoles) &&
+      !ownsTargetProfile
+    ) {
+      const fallbackAuthorRole = normalizeRoleName(comment?.authorAccentRole ?? "");
+
+      if (fallbackAuthorRole === "root") {
+        return false;
+      }
+
+      if (typeof comment?.authorUid === "string" && comment.authorUid) {
+        try {
+          const authorSnapshot = await getDoc(userRefFor(comment.authorUid));
+
+          if (authorSnapshot.exists()) {
+            const authorRoles = normalizeRoles(authorSnapshot.data()?.roles);
+
+            if (isRootRoleHolder(authorRoles)) {
+              return false;
+            }
+          }
+        } catch (error) {
+        }
+      }
+    }
+
+    return true;
+  };
   const canUseEnhancedAvatarMedia = (roles) =>
     normalizeRoles(roles).some((role) => {
       const normalizedRole = normalizeRoleName(role);
@@ -2676,12 +2720,12 @@
         typeof actorSnapshot?.profileId === "number" &&
         typeof comment.profileId === "number" &&
         actorSnapshot.profileId === comment.profileId;
-      const hasCommentModerationAccess = canModerateComments(actorSnapshot?.roles ?? []);
+      const hasCommentModerationAccess = await canDeleteCommentAsModerator(actorSnapshot, comment);
 
       if (!isAuthor && !ownsTargetProfile && !hasCommentModerationAccess) {
         throw createFirebaseError(
           "comments/delete-forbidden",
-          "You can only delete your own comments, comments on your profile, or moderate comments with staff roles."
+          "You can only delete your own comments, comments on your profile, or moderate comments with staff roles. Co-owner cannot remove root comments outside their profile."
         );
       }
 
