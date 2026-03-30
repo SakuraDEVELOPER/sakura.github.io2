@@ -1396,7 +1396,7 @@ function HeaderAuth() {
                     Verify Your Access
                   </h2>
                   <p className="mt-2 text-sm leading-relaxed text-[#f3d2c5]">
-                    Подтвердите почту, чтобы открыть профиль и пользоваться сайтом.
+                    Verify your email to unlock your profile and use the site.
                   </p>
                 </div>
 
