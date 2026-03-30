@@ -121,7 +121,7 @@ const AUTH_STATE_SETTLED_EVENT = "sakura-auth-state-settled";
 const USER_UPDATE_EVENT = "sakura-user-update";
 const PROFILE_PATH_STORAGE_KEY = "sakura-profile-path";
 const CURRENT_PROFILE_ID_STORAGE_KEY = "sakura-current-profile-id";
-const PROFILE_BUILD_MARKER = "role-colors-v50";
+const PROFILE_BUILD_MARKER = "role-colors-v51";
 const repoBasePath = "/sakura.github.io";
 const COMMENT_MEDIA_FILE_ACCEPT = ".png,.jpg,.jpeg,.webp,.gif";
 const PRESENCE_ACTIVE_WINDOW_MS = 5 * 60 * 1000;
@@ -232,6 +232,8 @@ const getCommentWriteDeniedMessage = (hasMedia: boolean) =>
   hasMedia
     ? "Comment media could not be saved. If attachments are enabled, allow mediaURL, mediaType, mediaPath, and mediaSize in profileComments rules."
     : "Comment could not be saved. Check Firestore rules for profileComments.";
+const getSupabaseCommentMediaUnavailableMessage = () =>
+  "Supabase media upload is not configured for this build yet. Add NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, and NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET to the deployed site build.";
 const toCommentMediaPayload = (
   uploadResult: SupabaseCommentMediaUploadResult
 ): CommentMediaPayload => ({
@@ -1986,6 +1988,11 @@ export default function ProfilePage() {
       return;
     }
 
+    if (commentMediaFile && (!isSupabaseConfigured || !visibleCurrentUser?.uid)) {
+      setCommentError(getSupabaseCommentMediaUnavailableMessage());
+      return;
+    }
+
     setCommentError(null);
     setCommentSuccess(null);
     setIsCommentSubmitting(true);
@@ -2179,6 +2186,11 @@ export default function ProfilePage() {
 
     if (!nextMessage && !willHaveMedia) {
       setCommentError("Write a comment or attach media before saving.");
+      return;
+    }
+
+    if (editingCommentMediaFile && (!isSupabaseConfigured || !visibleCurrentUser?.uid)) {
+      setCommentError(getSupabaseCommentMediaUnavailableMessage());
       return;
     }
 
@@ -2405,7 +2417,7 @@ export default function ProfilePage() {
                         <button type="button" onClick={() => commentMediaInputRef.current?.click()} className="inline-flex items-center justify-center rounded-full border border-[#3a2a31] bg-[#140d11] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-[#ffb7c5] transition hover:border-[#ffb7c5]/40 hover:text-white">
                           Media
                         </button>
-                        <button type="button" onClick={handleSupabaseUploadTest} disabled={!isSupabaseConfigured || !commentMediaFile || isSupabaseUploadTesting} className="inline-flex items-center justify-center rounded-full border border-[#2c3152] bg-[#0f1220] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-[#9ec1ff] transition hover:border-[#9ec1ff]/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-60">
+                        <button type="button" onClick={handleSupabaseUploadTest} disabled={!commentMediaFile || isSupabaseUploadTesting} className="inline-flex items-center justify-center rounded-full border border-[#2c3152] bg-[#0f1220] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-[#9ec1ff] transition hover:border-[#9ec1ff]/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-60">
                           {isSupabaseUploadTesting ? "Testing..." : "Test Upload"}
                         </button>
                       </div>
