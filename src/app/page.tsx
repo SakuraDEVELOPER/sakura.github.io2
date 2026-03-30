@@ -1585,6 +1585,17 @@ export default function Home() {
 
         </section>
 
+        <section className="px-10 pb-8">
+          <div className="mx-auto max-w-6xl">
+            <p className="mb-4 font-mono text-[10px] uppercase tracking-[0.4em] text-[#ffb7c5]">
+              Feature Showcase
+            </p>
+            <h2 className="max-w-2xl text-4xl font-black uppercase tracking-tighter text-white">
+              Листай карточки
+            </h2>
+          </div>
+        </section>
+
         <section id="features" className="grid grid-cols-1 gap-1 px-10 pt-20 pb-1 md:grid-cols-2">
           <FeatureBox
             delay={0.1}
@@ -2131,28 +2142,6 @@ function FeatureShowcase({ onTrialClick }: { onTrialClick: () => void }) {
   return (
     <section id="feature-showcase" className="border-t border-[#1a1a1a] px-10 py-24">
       <div className="mx-auto max-w-6xl">
-        <div className="mb-12">
-          <p className="mb-4 font-mono text-[10px] uppercase tracking-[0.4em] text-[#ffb7c5]">
-            Feature Showcase
-          </p>
-          <h2 className="max-w-2xl text-4xl font-black uppercase tracking-tighter text-white">
-            Листай карточки
-          </h2>
-        </div>
-
-        <div className="mb-12 flex flex-col items-center gap-5 text-center">
-          <p className="text-lg leading-relaxed text-gray-300">
-            Приватный чит для Dota 2.
-          </p>
-          <button
-            type="button"
-            onClick={onTrialClick}
-            className="inline-flex items-center justify-center rounded-full border border-[#ffb7c5]/60 bg-[#140f12] px-8 py-3 text-sm font-semibold text-[#ffd8e1] shadow-[0_0_24px_rgba(255,183,197,0.16)] transition-all hover:border-[#ffd1db] hover:bg-[#1c1217] hover:text-white active:scale-95"
-          >
-            Тестовый период на 7 дней
-          </button>
-        </div>
-
         <div className="grid items-stretch gap-8 lg:grid-cols-[0.85fr_1.15fr]">
           <m.div
             key={`copy-${slide.id}`}
@@ -2249,6 +2238,19 @@ function FeatureShowcase({ onTrialClick }: { onTrialClick: () => void }) {
               →
             </button>
           </div>
+        </div>
+
+        <div className="mt-12 flex flex-col items-center gap-5 text-center">
+          <p className="text-lg leading-relaxed text-gray-300">
+            Приватный чит для Dota 2.
+          </p>
+          <button
+            type="button"
+            onClick={onTrialClick}
+            className="inline-flex items-center justify-center rounded-full border border-[#ffb7c5]/60 bg-[#140f12] px-8 py-3 text-sm font-semibold text-[#ffd8e1] shadow-[0_0_24px_rgba(255,183,197,0.16)] transition-all hover:border-[#ffd1db] hover:bg-[#1c1217] hover:text-white active:scale-95"
+          >
+            Тестовый период на 7 дней
+          </button>
         </div>
       </div>
     </section>
