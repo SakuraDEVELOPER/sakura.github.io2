@@ -19,12 +19,14 @@
           EmailAuthProvider,
           GoogleAuthProvider,
           getAuth,
+          getRedirectResult,
           onAuthStateChanged,
           reauthenticateWithCredential,
           reload,
           sendEmailVerification,
           signInAnonymously,
           signInWithPopup,
+          signInWithRedirect,
           signInWithEmailAndPassword,
           signOut,
           updateProfile
@@ -344,6 +346,15 @@
     typeof error === "object" && error !== null && "code" in error
       ? String(error.code)
       : "";
+
+  const shouldFallbackGooglePopupToRedirect = (error) => {
+    const code = getErrorCode(error);
+
+    return (
+      code === "auth/popup-blocked" ||
+      code === "auth/operation-not-supported-in-this-environment"
+    );
+  };
 
   const isPermissionDeniedError = (error) =>
     getErrorCode(error) === "permission-denied" ||
@@ -1950,15 +1961,13 @@
       );
     };
 
-    const loginWithGoogle = async () => {
-      const result = await signInWithPopup(auth, provider);
-
+    const finalizeGoogleSignIn = async (user) => {
       try {
-        const snapshot = await resolveUserSnapshot(result.user, {
-          preferredDisplayName: result.user.displayName?.trim() || null,
+        const snapshot = await resolveUserSnapshot(user, {
+          preferredDisplayName: user.displayName?.trim() || null,
         });
         const allowedSnapshot = await enforceActiveSessionNotBanned(snapshot);
-        await syncPresence(result.user, {
+        await syncPresence(user, {
           path: window.location.pathname,
           source: "google-login",
           forceVisit: true,
@@ -1971,6 +1980,20 @@
               ? error.message
               : "Profile record could not be created or loaded."
           );
+        }
+
+        throw error;
+      }
+    };
+
+    const loginWithGoogle = async () => {
+      try {
+        const result = await signInWithPopup(auth, provider);
+        return await finalizeGoogleSignIn(result.user);
+      } catch (error) {
+        if (shouldFallbackGooglePopupToRedirect(error)) {
+          await signInWithRedirect(auth, provider);
+          return null;
         }
 
         throw error;
@@ -3255,6 +3278,16 @@
       }));
     };
 
+    const redirectResultPromise = getRedirectResult(auth).catch((error) => {
+      if (getErrorCode(error) !== "auth/no-auth-event") {
+        const message =
+          error instanceof Error ? error.message : "Google redirect sign-in could not be completed.";
+        window.dispatchEvent(new CustomEvent(AUTH_ERROR_EVENT, { detail: message }));
+      }
+
+      return null;
+    });
+
     window.sakuraFirebaseAuth = {
       register: async ({ login, displayName, email, password }) => {
         const credentials = await createUserWithEmailAndPassword(auth, email, password);
@@ -3399,6 +3432,7 @@
           }
 
           try {
+            await redirectResultPromise;
             const snapshot = await resolveUserSnapshot(user);
             const allowedSnapshot = await enforceActiveSessionNotBanned(snapshot, {
               throwError: false,

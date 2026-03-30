@@ -1046,6 +1046,12 @@ function HeaderAuth() {
 
     try {
       const snapshot = await window.sakuraFirebaseAuth.loginWithGoogle();
+      if (!snapshot) {
+        closeModal();
+        setFlashMessage("Открываем Google для входа...");
+        return;
+      }
+
       if (!snapshot?.login) {
         setFlashMessage("Signed in with Google. Create a login on your profile.");
       }
