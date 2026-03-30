@@ -1375,6 +1375,74 @@ export default function ProfilePage() {
 
     return mentionKeys;
   };
+  const resolveMentionProfileRole = (profile: UserProfile | null | undefined) => {
+    if (!profile) {
+      return null;
+    }
+
+    if (profile.isBanned === true) {
+      return "banned";
+    }
+
+    return pickCommentAuthorAccentRole(profile.roles) ?? null;
+  };
+  const renderMentionProfilePreview = (mentionProfile: UserProfile, mentionText: string) => {
+    const mentionProfileRole = resolveMentionProfileRole(mentionProfile);
+    const mentionPreviewName = profileNameOf(mentionProfile);
+    const mentionPreviewLogin = mentionProfile.login ? `@${mentionProfile.login}` : mentionText;
+    const mentionPreviewInitials = initialsOf(mentionProfile);
+    const mentionPreviewBadgeRole = deriveVisibleProfileRoles(mentionProfile)[0] ?? "user";
+
+    return (
+      <span className="pointer-events-none absolute left-1/2 top-full z-30 mt-3 w-[260px] -translate-x-1/2 translate-y-2 rounded-[22px] border border-[#2a2023] bg-[#0c0b0d] px-4 py-4 opacity-0 shadow-[0_18px_50px_rgba(0,0,0,0.46),0_0_35px_rgba(255,183,197,0.08)] transition duration-150 ease-out invisible group-hover/mention:visible group-hover/mention:translate-y-0 group-hover/mention:opacity-100 group-focus-within/mention:visible group-focus-within/mention:translate-y-0 group-focus-within/mention:opacity-100">
+        <span className="absolute left-1/2 top-0 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rotate-45 border-l border-t border-[#2a2023] bg-[#0c0b0d]" />
+        <span className="flex items-start gap-3">
+          {mentionProfile.photoURL ? (
+            <AvatarMedia
+              src={mentionProfile.photoURL}
+              alt={mentionPreviewName}
+              loading="lazy"
+              decoding="async"
+              className="h-12 w-12 shrink-0 rounded-[18px] border border-[#2a2022] object-cover shadow-[0_0_18px_rgba(255,183,197,0.12)]"
+            />
+          ) : (
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] border border-[#2a2022] bg-[#171012] text-xs font-black uppercase text-[#ffb7c5] shadow-[0_0_18px_rgba(255,183,197,0.08)]">
+              {mentionPreviewInitials}
+            </span>
+          )}
+          <span className="min-w-0 flex-1">
+            <span
+              style={roleHeadlineStyle(mentionProfileRole)}
+              className="block truncate text-sm font-black uppercase tracking-[0.03em]"
+            >
+              {mentionPreviewName}
+            </span>
+            <span
+              style={roleCommentAuthorStyle(mentionProfileRole)}
+              className="mt-1 block truncate text-xs font-semibold"
+            >
+              {mentionPreviewLogin}
+            </span>
+            <span className="mt-3 flex items-center gap-2">
+              <span
+                style={{ ...roleBadgeStyle(mentionPreviewBadgeRole), ...roleBadgeTextStyle }}
+                className="inline-flex max-w-full items-center truncate whitespace-nowrap rounded-full border px-3 py-1 text-[10px] font-bold"
+              >
+                <span aria-hidden="true" className="inline-flex items-center truncate">
+                  {renderRoleBadgeText(mentionPreviewBadgeRole)}
+                </span>
+              </span>
+              {typeof mentionProfile.profileId === "number" ? (
+                <span className="truncate text-[10px] font-mono uppercase tracking-[0.14em] text-gray-500">
+                  Profile #{mentionProfile.profileId}
+                </span>
+              ) : null}
+            </span>
+          </span>
+        </span>
+      </span>
+    );
+  };
   const renderCommentMessageWithMentions = (value: string) => {
     const parts: ReactNode[] = [];
     COMMENT_MENTION_PATTERN.lastIndex = 0;
@@ -1399,16 +1467,23 @@ export default function ProfilePage() {
       const mentionKey = normalizeCommentAuthorKey(mentionLogin);
       const mentionProfile = mentionKey ? commentMentionProfilesByKey[mentionKey] : null;
       const mentionText = `@${mentionLogin}`;
+      const mentionRole = resolveMentionProfileRole(mentionProfile);
 
       if (mentionProfile?.profileId) {
         parts.push(
-          <a
+          <span
             key={`${mentionKey}:${matchIndex}`}
-            href={profilePath(mentionProfile.profileId)}
-            className="font-semibold text-[#8fc4ff] transition hover:text-white"
+            className="group/mention relative inline-flex max-w-full align-baseline"
           >
-            {mentionText}
-          </a>
+            <a
+              href={profilePath(mentionProfile.profileId)}
+              style={roleCommentAuthorStyle(mentionRole)}
+              className="inline-flex max-w-full items-baseline truncate font-semibold underline decoration-transparent transition duration-150 hover:brightness-125 hover:decoration-current focus-visible:decoration-current"
+            >
+              {mentionText}
+            </a>
+            {renderMentionProfilePreview(mentionProfile, mentionText)}
+          </span>
         );
       } else {
         parts.push(mentionText);
