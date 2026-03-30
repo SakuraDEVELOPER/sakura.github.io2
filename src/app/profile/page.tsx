@@ -149,7 +149,7 @@ const COMMENT_MENTION_DRAFT_PATTERN = /(^|[\s([{"'`])@([A-Za-z\u0400-\u04FF0-9._
 const COMMENT_MENTION_TOKEN_CHARACTER_PATTERN = /[A-Za-z\u0400-\u04FF0-9._-]/;
 const repoBasePath = "/sakura.github.io";
 const COMMENT_MEDIA_FILE_ACCEPT = ".png,.jpg,.jpeg,.webp,.gif,.mp4,.webm";
-const PRESENCE_ACTIVE_WINDOW_MS = 5 * 60 * 1000;
+const PRESENCE_ACTIVE_WINDOW_MS = 90 * 1000;
 const restoreProfilePathScript = `
   (function () {
     try {
@@ -1506,6 +1506,20 @@ export default function ProfilePage() {
         (profile, index, profiles) =>
           index === profiles.findIndex((candidate) => candidate.uid === profile.uid)
       );
+  const filterComposerMentionProfilesByValue = (
+    value: string,
+    profilesByKey: Record<string, UserProfile>
+  ) => {
+    const activeKeys = new Set(extractCommentMentionKeys(value));
+
+    if (!activeKeys.size) {
+      return {};
+    }
+
+    return Object.fromEntries(
+      Object.entries(profilesByKey).filter(([mentionKey]) => activeKeys.has(mentionKey))
+    );
+  };
   const renderComposerMentionAttachments = (
     mode: MentionComposerMode,
     value: string,
@@ -2416,8 +2430,14 @@ export default function ProfilePage() {
 
     if (mode === "new") {
       setCommentInput(nextValue);
+      setCommentDraftMentionProfilesByKey((currentProfiles) =>
+        filterComposerMentionProfilesByValue(nextValue, currentProfiles)
+      );
     } else {
       setEditingCommentMessage(nextValue);
+      setEditingDraftMentionProfilesByKey((currentProfiles) =>
+        filterComposerMentionProfilesByValue(nextValue, currentProfiles)
+      );
     }
 
     updateMentionComposerCaret(mode, event.currentTarget);
@@ -2924,6 +2944,9 @@ export default function ProfilePage() {
     setCommentSuccess(null);
     setEditingCommentId(comment.id);
     setEditingCommentMessage(comment.message);
+    setEditingDraftMentionProfilesByKey((currentProfiles) =>
+      filterComposerMentionProfilesByValue(comment.message, currentProfiles)
+    );
     setEditingCommentMediaFile(null);
     setEditingCommentMediaPreviewUrl(null);
     setIsEditingCommentMediaRemoved(false);
@@ -2935,6 +2958,7 @@ export default function ProfilePage() {
   const handleCommentEditCancel = () => {
     setEditingCommentId(null);
     setEditingCommentMessage("");
+    setEditingDraftMentionProfilesByKey({});
     setEditingCommentMediaFile(null);
     setEditingCommentMediaPreviewUrl(null);
     setIsEditingCommentMediaRemoved(false);

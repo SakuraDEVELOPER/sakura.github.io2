@@ -97,7 +97,9 @@
   const PROFILE_COMMENT_MEDIA_EXPORT_QUALITY_STEP = 0.08;
   const PROFILE_COMMENT_MEDIA_MAX_DATA_URL_LENGTH = 760000;
   const PROFILE_LOOKUP_TIMEOUT_MS = 5000;
-  const PRESENCE_ONLINE_WINDOW_MS = 5 * 60 * 1000;
+  const PRESENCE_ONLINE_WINDOW_MS = 90 * 1000;
+  const PRESENCE_HEARTBEAT_INTERVAL_MS = 45 * 1000;
+  const PRESENCE_VISIT_RECORD_COOLDOWN_MS = 5 * 60 * 1000;
   const DISPLAY_NAME_MAX_LENGTH = 48;
   const USER_UPDATE_EVENT = "sakura-user-update";
   const AUTH_ERROR_EVENT = "sakura-auth-error";
@@ -1643,7 +1645,7 @@
           !lastVisit ||
           lastVisit.path !== currentPath ||
           lastVisit.status !== status ||
-          Date.now() - lastPresenceAt > 5 * 60 * 1000 ||
+          Date.now() - lastPresenceAt > PRESENCE_VISIT_RECORD_COOLDOWN_MS ||
           lastPresenceSignature !== signature;
         const presence = {
           status,
@@ -1944,17 +1946,22 @@
         );
       };
 
+      const handlePageShow = () => {
+        syncCurrentPresence("page-show", true);
+      };
+
       const handlePageHide = () => {
         syncCurrentPresence("page-hide", true);
       };
 
       const intervalId = window.setInterval(() => {
         syncCurrentPresence("heartbeat");
-      }, 120000);
+      }, PRESENCE_HEARTBEAT_INTERVAL_MS);
 
       window.addEventListener("online", handleOnline);
       window.addEventListener("offline", handleOffline);
       window.addEventListener("visibilitychange", handleVisibilityChange);
+      window.addEventListener("pageshow", handlePageShow);
       window.addEventListener("pagehide", handlePageHide);
 
       stopPresenceTracking = () => {
@@ -1962,6 +1969,7 @@
         window.removeEventListener("online", handleOnline);
         window.removeEventListener("offline", handleOffline);
         window.removeEventListener("visibilitychange", handleVisibilityChange);
+        window.removeEventListener("pageshow", handlePageShow);
         window.removeEventListener("pagehide", handlePageHide);
       };
 
