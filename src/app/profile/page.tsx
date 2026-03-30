@@ -1479,7 +1479,7 @@ export default function ProfilePage() {
             >
               {mentionPreviewName}
             </a>
-            <span className="mt-2 flex items-end justify-between gap-3">
+            <span className="mt-2 flex items-center justify-between gap-3">
               <span
                 style={{ ...roleBadgeStyle(mentionPreviewBadgeRole), ...roleBadgeTextStyle }}
                 className="inline-flex max-w-full items-center truncate whitespace-nowrap rounded-full border px-3 py-1 text-[10px] font-bold"
@@ -1489,7 +1489,10 @@ export default function ProfilePage() {
                 </span>
               </span>
               {typeof previewProfile.profileId === "number" ? (
-                <span className="inline-flex shrink-0 items-center rounded-full border border-[#3a2a31] bg-[#140d11] px-3 py-1 text-[10px] font-mono uppercase tracking-[0.14em] text-[#ffb7c5]">
+                <span
+                  style={roleBadgeTextStyle}
+                  className="inline-flex shrink-0 items-center whitespace-nowrap rounded-full border border-[#3a2a31] bg-[#140d11] px-3 py-1 text-[10px] font-bold text-[#ffb7c5]"
+                >
                   ID: {previewProfile.profileId}
                 </span>
               ) : null}
