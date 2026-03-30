@@ -119,6 +119,11 @@ type AuthUserSnapshot = {
 type FirebaseAuthBridge = {
   login: (identifier: string, password: string) => Promise<AuthUserSnapshot | null>;
   loginWithGoogle: () => Promise<AuthUserSnapshot | null>;
+  completeGoogleAccount: (credentials: {
+    login: string;
+    displayName?: string;
+    password: string;
+  }) => Promise<AuthUserSnapshot | null>;
   register: (credentials: {
     login: string;
     displayName?: string;
@@ -175,6 +180,7 @@ const AUTH_ERROR_EVENT = "sakura-auth-error";
 const USER_UPDATE_EVENT = "sakura-user-update";
 const OPEN_AUTH_MODAL_EVENT = "sakura-open-auth-modal";
 const EMAIL_VERIFICATION_LOCK_EVENT = "sakura-email-verification-lock";
+const PRESENCE_DIRTY_EVENT = "sakura-presence-dirty";
 const LOGIN_PATTERN = /^[A-Za-zА-Яа-яЁё0-9._-]+$/;
 
 const ROLE_CHIP_ORDER = new Map([
@@ -472,6 +478,15 @@ function isEmailVerificationLocked(user: AuthUserSnapshot | null | undefined) {
   );
 }
 
+function requiresGoogleAccountCompletion(user: AuthUserSnapshot | null | undefined) {
+  return Boolean(
+    user &&
+      !user.isAnonymous &&
+      user.providerIds.includes("google.com") &&
+      (!user.login?.trim() || !user.providerIds.includes("password"))
+  );
+}
+
 function buildUserLabel(user: AuthUserSnapshot) {
   const shouldPreferLogin =
     Boolean(user.login?.trim()) &&
@@ -644,6 +659,7 @@ function HeaderAuth() {
   const [isVerificationRefreshing, setIsVerificationRefreshing] = useState(false);
   const visibleUser = currentUser && !currentUser.isAnonymous ? currentUser : null;
   const isVerificationLockedUser = isEmailVerificationLocked(visibleUser);
+  const isGoogleSetupFlowActive = requiresGoogleAccountCompletion(visibleUser);
   const currentUserId = visibleUser?.uid ?? null;
 
   useEffect(() => {
@@ -756,7 +772,7 @@ function HeaderAuth() {
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        if (isModalOpen) {
+        if (isModalOpen && !isGoogleSetupFlowActive) {
           setIsModalOpen(false);
           setSubmitError(null);
         }
@@ -773,7 +789,7 @@ function HeaderAuth() {
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isModalOpen, isVerificationModalOpen]);
+  }, [isModalOpen, isVerificationModalOpen, isGoogleSetupFlowActive]);
 
   useEffect(() => {
     if (!flashMessage) {
@@ -800,6 +816,28 @@ function HeaderAuth() {
     }
   }, [isVerificationLockedUser]);
 
+  useEffect(() => {
+    if (!visibleUser || !requiresGoogleAccountCompletion(visibleUser)) {
+      return;
+    }
+
+    requestFirebaseAuthBoot();
+    setMode("register");
+    setIsModalOpen(true);
+    setSubmitError(null);
+    setProfileName(visibleUser.displayName?.trim() ?? "");
+    setLoginName(visibleUser.login?.trim() ?? "");
+    setIdentifier(visibleUser.email?.trim() ?? "");
+    setPassword("");
+    setConfirmPassword("");
+  }, [
+    visibleUser?.uid,
+    visibleUser?.email,
+    visibleUser?.login,
+    visibleUser?.displayName,
+    visibleUser?.providerIds,
+  ]);
+
   const openModal = (nextMode: AuthMode) => {
     requestFirebaseAuthBoot();
     setMode(nextMode);
@@ -808,6 +846,10 @@ function HeaderAuth() {
   };
 
   const closeModal = () => {
+    if (isGoogleSetupFlowActive) {
+      return;
+    }
+
     setIsModalOpen(false);
     setSubmitError(null);
     setProfileName("");
@@ -827,6 +869,10 @@ function HeaderAuth() {
   };
 
   const switchMode = (nextMode: AuthMode) => {
+    if (isGoogleSetupFlowActive) {
+      return;
+    }
+
     setMode(nextMode);
     setSubmitError(null);
     setProfileName("");
@@ -912,6 +958,21 @@ function HeaderAuth() {
       return;
     }
 
+    if (requiresGoogleAccountCompletion(nextUser)) {
+      requestFirebaseAuthBoot();
+      setMode("register");
+      setIsModalOpen(true);
+      setSubmitError(
+        "Finish your Google registration by creating a login and password."
+      );
+      setProfileName(nextUser?.displayName?.trim() ?? "");
+      setLoginName(nextUser?.login?.trim() ?? "");
+      setIdentifier(nextUser?.email?.trim() ?? "");
+      setPassword("");
+      setConfirmPassword("");
+      return;
+    }
+
     window.location.assign(profileHref(nextUser?.profileId ?? window.sakuraCurrentUserSnapshot?.profileId));
   };
 
@@ -974,7 +1035,14 @@ function HeaderAuth() {
 
     try {
       let snapshot: AuthUserSnapshot | null;
-      if (mode === "register") {
+      if (isGoogleSetupFlowActive) {
+        snapshot = await window.sakuraFirebaseAuth.completeGoogleAccount({
+          login: loginName.trim().replace(/\s+/g, ""),
+          displayName: profileName.trim(),
+          password,
+        });
+        setFlashMessage("Google account completed. Login and password are now linked.");
+      } else if (mode === "register") {
         snapshot = await window.sakuraFirebaseAuth.register({
           login: loginName.trim().replace(/\s+/g, ""),
           displayName: profileName.trim(),
@@ -1052,9 +1120,19 @@ function HeaderAuth() {
         return;
       }
 
-      if (!snapshot?.login) {
-        setFlashMessage("Signed in with Google. Create a login on your profile.");
+      if (requiresGoogleAccountCompletion(snapshot)) {
+        setCurrentUser(snapshot);
+        setMode("register");
+        setIsModalOpen(true);
+        setProfileName(snapshot.displayName?.trim() ?? "");
+        setLoginName(snapshot.login?.trim() ?? "");
+        setIdentifier(snapshot.email?.trim() ?? "");
+        setPassword("");
+        setConfirmPassword("");
+        setFlashMessage("Complete your Google account by creating a login and password.");
+        return;
       }
+
       setFlashMessage(
         isEmailVerificationLocked(snapshot)
           ? "Почта не подтверждена. Подтвердите email, чтобы открыть профиль."
@@ -1187,7 +1265,7 @@ function HeaderAuth() {
           <button
             type="button"
             aria-label="Close auth modal"
-            onClick={closeModal}
+            onClick={isGoogleSetupFlowActive ? undefined : closeModal}
             className="absolute inset-0 bg-black/75 backdrop-blur-sm"
           />
 
@@ -1204,12 +1282,18 @@ function HeaderAuth() {
                     Sakura Access
                   </p>
                   <h2 className="text-2xl font-black uppercase tracking-tighter text-white">
-                    {mode === "register" ? "Registration" : "Sign In"}
+                    {isGoogleSetupFlowActive
+                      ? "Complete Google Account"
+                      : mode === "register"
+                        ? "Registration"
+                        : "Sign In"}
                   </h2>
                   <p className="mt-2 text-sm text-gray-400">
-                    {mode === "register"
-                      ? "Create a username for your profile and a separate login for sign-in."
-                      : "You can sign in with your email or login through Firebase Auth."}
+                    {isGoogleSetupFlowActive
+                      ? "Choose a login and password to finish Google registration. Until then, the profile stays locked."
+                      : mode === "register"
+                        ? "Create a username for your profile and a separate login for sign-in."
+                        : "You can sign in with your email or login through Firebase Auth."}
                   </p>
                   <p className="mt-2 hidden text-sm text-gray-400">
                     {mode === "register"
@@ -1218,39 +1302,43 @@ function HeaderAuth() {
                   </p>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={closeModal}
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#272727] bg-[#101010] text-lg text-gray-400 transition hover:border-[#ffb7c5]/40 hover:text-white"
-                >
-                  ×
-                </button>
+                {!isGoogleSetupFlowActive ? (
+                  <button
+                    type="button"
+                    onClick={closeModal}
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#272727] bg-[#101010] text-lg text-gray-400 transition hover:border-[#ffb7c5]/40 hover:text-white"
+                  >
+                    ×
+                  </button>
+                ) : null}
               </div>
             </div>
 
             <div className="p-6">
-              <div className="grid grid-cols-2 gap-2 rounded-full border border-[#1e1e1e] bg-[#080808] p-1">
-                <button
-                  type="button"
-                  onClick={() => switchMode("login")}
-                  className={`rounded-full px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition ${
-                    mode === "login" ? "bg-[#ffb7c5] text-black" : "text-gray-400 hover:text-white"
-                  }`}
-                >
-                  Sign In
-                </button>
-                <button
-                  type="button"
-                  onClick={() => switchMode("register")}
-                  className={`rounded-full px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition ${
-                    mode === "register"
-                      ? "bg-[#ffb7c5] text-black"
-                      : "text-gray-400 hover:text-white"
-                  }`}
-                >
-                  Registration
-                </button>
-              </div>
+              {!isGoogleSetupFlowActive ? (
+                <div className="grid grid-cols-2 gap-2 rounded-full border border-[#1e1e1e] bg-[#080808] p-1">
+                  <button
+                    type="button"
+                    onClick={() => switchMode("login")}
+                    className={`rounded-full px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition ${
+                      mode === "login" ? "bg-[#ffb7c5] text-black" : "text-gray-400 hover:text-white"
+                    }`}
+                  >
+                    Sign In
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => switchMode("register")}
+                    className={`rounded-full px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition ${
+                      mode === "register"
+                        ? "bg-[#ffb7c5] text-black"
+                        : "text-gray-400 hover:text-white"
+                    }`}
+                  >
+                    Registration
+                  </button>
+                </div>
+              ) : null}
 
               {!authReady && !authLoadError ? (
                 <div className="mt-5 rounded-2xl border border-[#2b1b1e] bg-[#120d0f] px-4 py-3 text-sm text-[#f2c0cb]">
@@ -1264,31 +1352,39 @@ function HeaderAuth() {
                 </div>
               ) : null}
 
-              <button
-                type="button"
-                onClick={handleGoogleLogin}
-                disabled={!authReady || isGoogleSubmitting}
-                className="mt-5 inline-flex w-full items-center justify-center gap-3 rounded-2xl border border-[#ffb7c5] bg-[#1a1a1a] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#252525] hover:shadow-[0_0_15px_#ffb7c5] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <img
-                  src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
-                  width="18"
-                  height="18"
-                  alt="Google"
-                />
-                <span>{isGoogleSubmitting ? "Connecting Google..." : "Войти через Google"}</span>
-              </button>
+              {!isGoogleSetupFlowActive ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleGoogleLogin}
+                    disabled={!authReady || isGoogleSubmitting}
+                    className="mt-5 inline-flex w-full items-center justify-center gap-3 rounded-2xl border border-[#ffb7c5] bg-[#1a1a1a] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#252525] hover:shadow-[0_0_15px_#ffb7c5] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <img
+                      src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
+                      width="18"
+                      height="18"
+                      alt="Google"
+                    />
+                    <span>{isGoogleSubmitting ? "Connecting Google..." : "Войти через Google"}</span>
+                  </button>
 
-              <div className="mt-5 flex items-center gap-3">
-                <div className="h-px flex-1 bg-[#1f1f1f]"></div>
-                <span className="font-mono text-[10px] uppercase tracking-[0.28em] text-gray-600">
-                  or
-                </span>
-                <div className="h-px flex-1 bg-[#1f1f1f]"></div>
-              </div>
+                  <div className="mt-5 flex items-center gap-3">
+                    <div className="h-px flex-1 bg-[#1f1f1f]"></div>
+                    <span className="font-mono text-[10px] uppercase tracking-[0.28em] text-gray-600">
+                      or
+                    </span>
+                    <div className="h-px flex-1 bg-[#1f1f1f]"></div>
+                  </div>
+                </>
+              ) : (
+                <div className="mt-5 rounded-2xl border border-[#2b1b1e] bg-[#120d0f] px-4 py-3 text-sm text-[#f2c0cb]">
+                  {visibleUser?.email ? `Google email: ${visibleUser.email}` : "Google account connected."}
+                </div>
+              )}
 
               <form className="mt-5 space-y-4" onSubmit={handleSubmit}>
-                {mode === "register" ? (
+                {mode === "register" || isGoogleSetupFlowActive ? (
                   <label className="block">
                     <span className="mb-2 block font-mono text-[10px] uppercase tracking-[0.28em] text-gray-500">
                       Username
@@ -1308,7 +1404,7 @@ function HeaderAuth() {
                   </label>
                 ) : null}
 
-                {mode === "register" ? (
+                {mode === "register" || isGoogleSetupFlowActive ? (
                   <label className="block">
                     <span className="mb-2 block font-mono text-[10px] uppercase tracking-[0.28em] text-gray-500">
                       Login
@@ -1332,21 +1428,35 @@ function HeaderAuth() {
                   </label>
                 ) : null}
 
-                <label className="block">
-                  <span className="mb-2 block font-mono text-[10px] uppercase tracking-[0.28em] text-gray-500">
-                    {mode === "register" ? "Email" : "Email or Login"}
-                  </span>
-                  <input
-                    type={mode === "register" ? "email" : "text"}
-                    value={identifier}
-                    autoComplete={mode === "register" ? "email" : "username"}
-                    onChange={(event) => setIdentifier(event.target.value)}
-                    className="w-full rounded-2xl border border-[#232323] bg-[#090909] px-4 py-3 text-sm text-white outline-none transition placeholder:text-gray-600 focus:border-[#ffb7c5]/55"
-                    placeholder={
-                      mode === "register" ? "you@example.com" : "you@example.com or your_login"
-                    }
-                  />
-                </label>
+                {isGoogleSetupFlowActive ? (
+                  <label className="block">
+                    <span className="mb-2 block font-mono text-[10px] uppercase tracking-[0.28em] text-gray-500">
+                      Google Email
+                    </span>
+                    <input
+                      type="email"
+                      value={identifier}
+                      readOnly
+                      className="w-full cursor-not-allowed rounded-2xl border border-[#232323] bg-[#090909] px-4 py-3 text-sm text-gray-400 outline-none"
+                    />
+                  </label>
+                ) : (
+                  <label className="block">
+                    <span className="mb-2 block font-mono text-[10px] uppercase tracking-[0.28em] text-gray-500">
+                      {mode === "register" ? "Email" : "Email or Login"}
+                    </span>
+                    <input
+                      type={mode === "register" ? "email" : "text"}
+                      value={identifier}
+                      autoComplete={mode === "register" ? "email" : "username"}
+                      onChange={(event) => setIdentifier(event.target.value)}
+                      className="w-full rounded-2xl border border-[#232323] bg-[#090909] px-4 py-3 text-sm text-white outline-none transition placeholder:text-gray-600 focus:border-[#ffb7c5]/55"
+                      placeholder={
+                        mode === "register" ? "you@example.com" : "you@example.com or your_login"
+                      }
+                    />
+                  </label>
+                )}
 
                 <label className="block">
                   <span className="mb-2 block font-mono text-[10px] uppercase tracking-[0.28em] text-gray-500">
@@ -1362,7 +1472,7 @@ function HeaderAuth() {
                   />
                 </label>
 
-                {mode === "register" ? (
+                {mode === "register" || isGoogleSetupFlowActive ? (
                   <label className="block">
                     <span className="mb-2 block font-mono text-[10px] uppercase tracking-[0.28em] text-gray-500">
                       Confirm Password
@@ -1390,10 +1500,14 @@ function HeaderAuth() {
                   className="inline-flex w-full items-center justify-center rounded-full bg-[#ffb7c5] px-5 py-3 text-sm font-black uppercase tracking-[0.18em] text-black shadow-[0_0_30px_rgba(255,183,197,0.12)] transition hover:bg-[#ffc8d3] disabled:cursor-not-allowed disabled:bg-[#ffb7c5]/40 disabled:text-black/60"
                 >
                   {isSubmitting
-                    ? mode === "register"
+                    ? isGoogleSetupFlowActive
+                      ? "Finishing Google account..."
+                      : mode === "register"
                       ? "Creating account..."
                       : "Signing in..."
-                    : mode === "register"
+                    : isGoogleSetupFlowActive
+                      ? "Finish Google Account"
+                      : mode === "register"
                       ? "Create Account"
                       : "Sign In"}
                 </button>
@@ -1486,8 +1600,13 @@ export default function Home() {
 
     let isCancelled = false;
     let intervalId = 0;
+    let isRefreshing = false;
 
     const refreshSiteOnlineCount = async () => {
+      if (isRefreshing) {
+        return;
+      }
+
       const bridge = window.sakuraFirebaseAuth;
 
       if (!bridge) {
@@ -1495,12 +1614,26 @@ export default function Home() {
       }
 
       try {
+        isRefreshing = true;
         const nextCount = await bridge.getSiteOnlineCount();
 
         if (!isCancelled) {
           setSiteOnlineCount(nextCount);
         }
-      } catch (error) {}
+      } catch (error) {
+      } finally {
+        isRefreshing = false;
+      }
+    };
+
+    const handleRefreshRequest = () => {
+      void refreshSiteOnlineCount();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "hidden") {
+        void refreshSiteOnlineCount();
+      }
     };
 
     const startPolling = () => {
@@ -1509,7 +1642,7 @@ export default function Home() {
       if (!intervalId) {
         intervalId = window.setInterval(() => {
           void refreshSiteOnlineCount();
-        }, 60000);
+        }, 20000);
       }
     };
 
@@ -1524,6 +1657,12 @@ export default function Home() {
     };
 
     window.addEventListener(AUTH_READY_EVENT, handleReady);
+    window.addEventListener(USER_UPDATE_EVENT, handleRefreshRequest);
+    window.addEventListener(PRESENCE_DIRTY_EVENT, handleRefreshRequest);
+    window.addEventListener("pageshow", handleRefreshRequest);
+    window.addEventListener("online", handleRefreshRequest);
+    window.addEventListener("offline", handleRefreshRequest);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       isCancelled = true;
@@ -1531,6 +1670,12 @@ export default function Home() {
         window.clearInterval(intervalId);
       }
       window.removeEventListener(AUTH_READY_EVENT, handleReady);
+      window.removeEventListener(USER_UPDATE_EVENT, handleRefreshRequest);
+      window.removeEventListener(PRESENCE_DIRTY_EVENT, handleRefreshRequest);
+      window.removeEventListener("pageshow", handleRefreshRequest);
+      window.removeEventListener("online", handleRefreshRequest);
+      window.removeEventListener("offline", handleRefreshRequest);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);
 

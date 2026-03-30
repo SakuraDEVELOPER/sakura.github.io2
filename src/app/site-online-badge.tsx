@@ -26,6 +26,8 @@ type SiteOnlineBadgeProps = {
   defaultVisible?: boolean;
 };
 
+const PRESENCE_DIRTY_EVENT = "sakura-presence-dirty";
+
 function buildInitials(user: SiteOnlineUser) {
   const source = user.displayName || user.login || (user.profileId ? `P${user.profileId}` : "U");
   const parts = source.split(/[\s@._-]+/).filter(Boolean);
@@ -143,8 +145,12 @@ export function SiteOnlineBadge({
   const [loadError, setLoadError] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const isActive = isHovered || isOpen;
+  const effectiveCount =
+    isOpen && !isLoading && !loadError ? users.length : count;
   const label =
-    count === null ? "Online on site" : `${count} ${count === 1 ? "user" : "users"} online`;
+    effectiveCount === null
+      ? "Online on site"
+      : `${effectiveCount} ${effectiveCount === 1 ? "user" : "users"} online`;
 
   useEffect(() => {
     if (!isOpen) {
@@ -201,13 +207,34 @@ export function SiteOnlineBadge({
 
     void loadUsers();
 
+    const handleRefreshRequest = () => {
+      void loadUsers();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "hidden") {
+        void loadUsers();
+      }
+    };
+
     const refreshTimer = window.setInterval(() => {
       void loadUsers();
-    }, 45000);
+    }, 20000);
+
+    window.addEventListener(PRESENCE_DIRTY_EVENT, handleRefreshRequest);
+    window.addEventListener("pageshow", handleRefreshRequest);
+    window.addEventListener("online", handleRefreshRequest);
+    window.addEventListener("offline", handleRefreshRequest);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       isCancelled = true;
       window.clearInterval(refreshTimer);
+      window.removeEventListener(PRESENCE_DIRTY_EVENT, handleRefreshRequest);
+      window.removeEventListener("pageshow", handleRefreshRequest);
+      window.removeEventListener("online", handleRefreshRequest);
+      window.removeEventListener("offline", handleRefreshRequest);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [isOpen]);
 
@@ -245,10 +272,9 @@ export function SiteOnlineBadge({
               <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-[#ffb7c5]">
                 Users Online
               </p>
-              <p className="mt-1 text-xs text-gray-500">Click any profile to open it.</p>
             </div>
             <span className="shrink-0 text-[11px] font-bold uppercase tracking-[0.18em] text-[#ffe2ea]">
-              {count ?? users.length}
+              {effectiveCount ?? users.length}
             </span>
           </div>
 

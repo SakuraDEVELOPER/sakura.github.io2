@@ -20,6 +20,7 @@
           GoogleAuthProvider,
           getAuth,
           getRedirectResult,
+          linkWithCredential,
           onAuthStateChanged,
           reauthenticateWithCredential,
           reload,
@@ -100,10 +101,14 @@
   const PRESENCE_ONLINE_WINDOW_MS = 90 * 1000;
   const PRESENCE_HEARTBEAT_INTERVAL_MS = 45 * 1000;
   const PRESENCE_VISIT_RECORD_COOLDOWN_MS = 5 * 60 * 1000;
+  const PRESENCE_TAB_REGISTRY_STORAGE_KEY = "sakura-presence-tabs-v1";
+  const PRESENCE_TAB_REGISTRY_MAX_AGE_MS =
+    PRESENCE_ONLINE_WINDOW_MS + PRESENCE_HEARTBEAT_INTERVAL_MS;
   const DISPLAY_NAME_MAX_LENGTH = 48;
   const USER_UPDATE_EVENT = "sakura-user-update";
   const AUTH_ERROR_EVENT = "sakura-auth-error";
   const AUTH_STATE_SETTLED_EVENT = "sakura-auth-state-settled";
+  const PRESENCE_DIRTY_EVENT = "sakura-presence-dirty";
   const CURRENT_PROFILE_ID_STORAGE_KEY = "sakura-current-profile-id";
   const AVATAR_CONTENT_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "video/mp4", "video/webm"]);
   const LOGIN_PATTERN = /^[A-Za-z\u0400-\u04FF0-9._-]+$/;
@@ -1226,6 +1231,105 @@
     let lastPresenceSignature = "";
     let lastPresenceAt = 0;
     let authStateHasSettled = false;
+    const currentPresenceTabId =
+      "presence-tab-" + Math.random().toString(36).slice(2) + "-" + Date.now().toString(36);
+
+    const readPresenceTabRegistry = () => {
+      try {
+        const rawValue = window.localStorage?.getItem(PRESENCE_TAB_REGISTRY_STORAGE_KEY);
+
+        if (!rawValue) {
+          return {};
+        }
+
+        const parsedValue = JSON.parse(rawValue);
+
+        return parsedValue && typeof parsedValue === "object" ? parsedValue : {};
+      } catch (error) {
+        return {};
+      }
+    };
+
+    const writePresenceTabRegistry = (registry) => {
+      try {
+        window.localStorage?.setItem(
+          PRESENCE_TAB_REGISTRY_STORAGE_KEY,
+          JSON.stringify(registry)
+        );
+      } catch (error) {}
+    };
+
+    const prunePresenceTabRegistry = (registry) => {
+      const now = Date.now();
+      const nextRegistry = {};
+
+      Object.entries(registry || {}).forEach(([key, value]) => {
+        if (!value || typeof value !== "object") {
+          return;
+        }
+
+        const timestamp =
+          typeof value.timestamp === "number" && Number.isFinite(value.timestamp)
+            ? value.timestamp
+            : Number.NaN;
+
+        if (!Number.isFinite(timestamp) || now - timestamp > PRESENCE_TAB_REGISTRY_MAX_AGE_MS) {
+          return;
+        }
+
+        nextRegistry[key] = {
+          uid: typeof value.uid === "string" && value.uid ? value.uid : null,
+          visible: value.visible !== false,
+          path: typeof value.path === "string" && value.path ? value.path : null,
+          timestamp,
+        };
+      });
+
+      return nextRegistry;
+    };
+
+    const updatePresenceTabRegistry = (uid, visible, path) => {
+      const nextRegistry = prunePresenceTabRegistry(readPresenceTabRegistry());
+
+      nextRegistry[currentPresenceTabId] = {
+        uid: typeof uid === "string" && uid ? uid : null,
+        visible: visible !== false,
+        path: typeof path === "string" && path ? path : null,
+        timestamp: Date.now(),
+      };
+
+      writePresenceTabRegistry(nextRegistry);
+      return nextRegistry;
+    };
+
+    const clearPresenceTabRegistryEntry = () => {
+      const nextRegistry = prunePresenceTabRegistry(readPresenceTabRegistry());
+
+      if (currentPresenceTabId in nextRegistry) {
+        delete nextRegistry[currentPresenceTabId];
+        writePresenceTabRegistry(nextRegistry);
+      }
+    };
+
+    const hasFreshVisiblePresenceTabForUid = (uid) => {
+      if (typeof uid !== "string" || !uid) {
+        return false;
+      }
+
+      const nextRegistry = prunePresenceTabRegistry(readPresenceTabRegistry());
+
+      return Object.values(nextRegistry).some(
+        (entry) =>
+          entry &&
+          typeof entry === "object" &&
+          entry.uid === uid &&
+          entry.visible === true
+      );
+    };
+
+    const broadcastPresenceDirty = () => {
+      window.dispatchEvent(new CustomEvent(PRESENCE_DIRTY_EVENT));
+    };
 
     const markAuthStateSettled = () => {
       if (authStateHasSettled) {
@@ -1705,9 +1809,17 @@
           typeof options.path === "string" && options.path
             ? options.path
             : window.location.pathname;
-        const isVisible = typeof document === "undefined" || document.visibilityState !== "hidden";
-        const isOnline = Boolean(navigator.onLine) && isVisible;
-        const status = isOnline ? "online" : "offline";
+        const forcedVisibility =
+          options.visibility === "hidden"
+            ? false
+            : options.visibility === "visible"
+              ? true
+              : typeof document === "undefined" || document.visibilityState !== "hidden";
+        const isVisible = forcedVisibility;
+        updatePresenceTabRegistry(user.uid, isVisible, currentPath);
+        const resolvedOnline =
+          Boolean(navigator.onLine) && hasFreshVisiblePresenceTabForUid(user.uid);
+        const status = resolvedOnline ? "online" : "offline";
         const source = typeof options.source === "string" ? options.source : "activity";
         const signature = status + "|" + currentPath + "|" + source;
         const previousVisits = normalizeVisitHistory(existingData?.visitHistory);
@@ -1720,8 +1832,8 @@
           Date.now() - lastPresenceAt > PRESENCE_VISIT_RECORD_COOLDOWN_MS ||
           lastPresenceSignature !== signature;
         const presence = {
-          status,
-          isOnline,
+          status: resolvedOnline ? "online" : "offline",
+          isOnline: resolvedOnline,
           currentPath,
           lastSeenAt: nowIso,
         };
@@ -1747,6 +1859,7 @@
           { merge: true }
         );
 
+        broadcastPresenceDirty();
         return publishUserSnapshot(toUserSnapshot(user, { ...existingData, visitHistory, presence }));
       } catch (error) {
         if (!isPermissionDeniedError(error)) {
@@ -1994,11 +2107,12 @@
     const startPresenceTracking = (user) => {
       stopPresenceTracking();
 
-      const syncCurrentPresence = (source, forceVisit = false) =>
+      const syncCurrentPresence = (source, forceVisit = false, visibility) =>
         syncPresence(user, {
           path: window.location.pathname,
           source,
           forceVisit,
+          visibility,
         }).catch((error) => {
           console.error("Failed to sync presence:", error);
         });
@@ -2014,16 +2128,21 @@
       const handleVisibilityChange = () => {
         syncCurrentPresence(
           document.visibilityState === "hidden" ? "tab-hidden" : "tab-visible",
-          true
+          true,
+          document.visibilityState === "hidden" ? "hidden" : "visible"
         );
       };
 
       const handlePageShow = () => {
-        syncCurrentPresence("page-show", true);
+        syncCurrentPresence("page-show", true, "visible");
       };
 
       const handlePageHide = () => {
-        syncCurrentPresence("page-hide", true);
+        syncCurrentPresence("page-hide", true, "hidden");
+      };
+
+      const handleBeforeUnload = () => {
+        syncCurrentPresence("before-unload", true, "hidden");
       };
 
       const intervalId = window.setInterval(() => {
@@ -2035,6 +2154,7 @@
       window.addEventListener("visibilitychange", handleVisibilityChange);
       window.addEventListener("pageshow", handlePageShow);
       window.addEventListener("pagehide", handlePageHide);
+      window.addEventListener("beforeunload", handleBeforeUnload);
 
       stopPresenceTracking = () => {
         window.clearInterval(intervalId);
@@ -2043,6 +2163,9 @@
         window.removeEventListener("visibilitychange", handleVisibilityChange);
         window.removeEventListener("pageshow", handlePageShow);
         window.removeEventListener("pagehide", handlePageHide);
+        window.removeEventListener("beforeunload", handleBeforeUnload);
+        clearPresenceTabRegistryEntry();
+        broadcastPresenceDirty();
       };
 
       syncCurrentPresence("session-start", true);
@@ -2226,6 +2349,85 @@
           displayName: sanitizedDisplayName,
         })
       );
+    };
+
+    const completeGoogleAccount = async ({ login, displayName, password }) => {
+      const user = auth.currentUser;
+
+      if (!user || user.isAnonymous) {
+        throw createFirebaseError(
+          "auth/no-current-user",
+          "Sign in with Google again to finish the account setup."
+        );
+      }
+
+      if (!user.email) {
+        throw createFirebaseError(
+          "auth/missing-email",
+          "This Google account does not provide an email for password sign-in."
+        );
+      }
+
+      const providerIdsBeforeLink = getProviderIds(user);
+      const loginDetails = await resolveAvailableLogin(login, user.uid);
+      const sanitizedDisplayName = sanitizeDisplayName(displayName);
+
+      if (!password || String(password).length < 6) {
+        throw createFirebaseError(
+          "auth/weak-password",
+          "Password should be at least 6 characters."
+        );
+      }
+
+      if (!providerIdsBeforeLink.includes("password")) {
+        try {
+          await linkWithCredential(
+            user,
+            EmailAuthProvider.credential(user.email, password)
+          );
+        } catch (error) {
+          const errorCode = getErrorCode(error);
+
+          if (errorCode !== "auth/provider-already-linked") {
+            throw error;
+          }
+        }
+      }
+
+      if (sanitizedDisplayName) {
+        try {
+          await updateProfile(user, { displayName: sanitizedDisplayName });
+        } catch (error) {
+          console.error("Failed to sync Firebase Auth displayName after Google completion:", error);
+        }
+      }
+
+      await setDoc(
+        userRefFor(user.uid),
+        stripNullishFields({
+          login: loginDetails.login,
+          loginLower: loginDetails.loginLower,
+          displayName: sanitizedDisplayName || user.displayName || loginDetails.login,
+          providerIds: getProviderIds(user),
+          updatedAt: new Date().toISOString(),
+        }),
+        { merge: true }
+      );
+
+      const snapshot = await resolveUserSnapshot(user, {
+        requestedLogin: loginDetails.login,
+        preferredDisplayName:
+          sanitizedDisplayName || user.displayName || loginDetails.login,
+      });
+      const allowedSnapshot = await enforceActiveSessionNotBanned(snapshot);
+
+      await syncPresence(user, {
+        path: window.location.pathname,
+        source: "google-complete",
+        forceVisit: true,
+      });
+
+      return allowedSnapshot;
     };
 
     const finalizeGoogleSignIn = async (user) => {
@@ -3561,7 +3763,7 @@
         const localSessionLooksOnline =
           Boolean(localCurrentUid) &&
           Boolean(navigator.onLine) &&
-          (typeof document === "undefined" || document.visibilityState !== "hidden");
+          hasFreshVisiblePresenceTabForUid(localCurrentUid);
         const localPresenceLooksOnline =
           isPresenceFreshOnline(currentSnapshot?.presence) || localSessionLooksOnline;
 
@@ -3796,6 +3998,7 @@
           throw error;
         }
       },
+      completeGoogleAccount,
       loginWithGoogle,
       updateDisplayName,
       updateUsername,

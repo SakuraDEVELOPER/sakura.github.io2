@@ -142,6 +142,7 @@ const AUTH_READY_EVENT = "sakura-auth-ready";
 const AUTH_ERROR_EVENT = "sakura-auth-error";
 const AUTH_STATE_SETTLED_EVENT = "sakura-auth-state-settled";
 const USER_UPDATE_EVENT = "sakura-user-update";
+const PRESENCE_DIRTY_EVENT = "sakura-presence-dirty";
 const PROFILE_PATH_STORAGE_KEY = "sakura-profile-path";
 const CURRENT_PROFILE_ID_STORAGE_KEY = "sakura-current-profile-id";
 const PROFILE_BUILD_MARKER = "role-colors-v61";
@@ -1260,7 +1261,12 @@ export default function ProfilePage() {
     }
 
     let isCancelled = false;
+    let isRefreshing = false;
     const refreshSiteOnlineCount = async () => {
+      if (isRefreshing) {
+        return;
+      }
+
       const bridge = getWindowState().sakuraFirebaseAuth;
 
       if (!bridge) {
@@ -1268,22 +1274,49 @@ export default function ProfilePage() {
       }
 
       try {
+        isRefreshing = true;
         const nextCount = await bridge.getSiteOnlineCount();
 
         if (!isCancelled) {
           setSiteOnlineCount(nextCount);
         }
-      } catch (error) {}
+      } catch (error) {
+      } finally {
+        isRefreshing = false;
+      }
+    };
+
+    const handleRefreshRequest = () => {
+      void refreshSiteOnlineCount();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "hidden") {
+        void refreshSiteOnlineCount();
+      }
     };
 
     void refreshSiteOnlineCount();
     const intervalId = window.setInterval(() => {
       void refreshSiteOnlineCount();
-    }, 60000);
+    }, 20000);
+
+    window.addEventListener(USER_UPDATE_EVENT, handleRefreshRequest);
+    window.addEventListener(PRESENCE_DIRTY_EVENT, handleRefreshRequest);
+    window.addEventListener("pageshow", handleRefreshRequest);
+    window.addEventListener("online", handleRefreshRequest);
+    window.addEventListener("offline", handleRefreshRequest);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       isCancelled = true;
       window.clearInterval(intervalId);
+      window.removeEventListener(USER_UPDATE_EVENT, handleRefreshRequest);
+      window.removeEventListener(PRESENCE_DIRTY_EVENT, handleRefreshRequest);
+      window.removeEventListener("pageshow", handleRefreshRequest);
+      window.removeEventListener("online", handleRefreshRequest);
+      window.removeEventListener("offline", handleRefreshRequest);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [authReady]);
 
