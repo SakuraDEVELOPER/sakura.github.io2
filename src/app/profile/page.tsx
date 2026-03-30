@@ -1388,7 +1388,6 @@ export default function ProfilePage() {
   };
   const renderMentionProfilePreview = (mentionProfile: UserProfile, mentionText: string) => {
     const mentionProfileRole = resolveMentionProfileRole(mentionProfile);
-    const mentionPreviewName = profileNameOf(mentionProfile);
     const mentionPreviewNickname = mentionProfile.login ? `@${mentionProfile.login}` : mentionText;
     const mentionPreviewInitials = initialsOf(mentionProfile);
     const mentionPreviewBadgeRole = deriveVisibleProfileRoles(mentionProfile)[0] ?? "user";
@@ -1405,7 +1404,7 @@ export default function ProfilePage() {
           {mentionProfile.photoURL ? (
             <AvatarMedia
               src={mentionProfile.photoURL}
-              alt={mentionPreviewName}
+              alt={mentionPreviewDisplayName || mentionPreviewNickname}
               loading="lazy"
               decoding="async"
               className="h-12 w-12 shrink-0 rounded-[18px] border border-[#2a2022] object-cover shadow-[0_0_18px_rgba(255,183,197,0.12)]"
@@ -1416,26 +1415,22 @@ export default function ProfilePage() {
             </span>
           )}
           <span className="min-w-0 flex-1">
+            {showMentionPreviewDisplayName ? (
+              <span
+                style={roleHeadlineStyle(mentionProfileRole)}
+                className="block truncate text-sm font-black uppercase tracking-[0.03em]"
+              >
+                {mentionPreviewDisplayName}
+              </span>
+            ) : null}
             <a
               href={typeof mentionProfile.profileId === "number" ? profilePath(mentionProfile.profileId) : "#"}
               style={roleCommentAuthorStyle(mentionProfileRole)}
-              className="block truncate text-sm font-black transition hover:brightness-125 hover:text-white"
+              className={`${showMentionPreviewDisplayName ? "mt-1 " : ""}block truncate text-sm font-semibold transition hover:brightness-125 hover:text-white`}
             >
               {mentionPreviewNickname}
             </a>
-            {showMentionPreviewDisplayName ? (
-              <span className="mt-1 block truncate text-xs text-gray-400">
-                {mentionPreviewDisplayName}
-              </span>
-            ) : (
-              <span
-                style={roleHeadlineStyle(mentionProfileRole)}
-                className="mt-1 block truncate text-xs font-semibold"
-              >
-                {mentionPreviewName}
-              </span>
-            )}
-            <span className="mt-3 flex items-center gap-2">
+            <span className="mt-2 flex items-center gap-2">
               <span
                 style={{ ...roleBadgeStyle(mentionPreviewBadgeRole), ...roleBadgeTextStyle }}
                 className="inline-flex max-w-full items-center truncate whitespace-nowrap rounded-full border px-3 py-1 text-[10px] font-bold"
@@ -1444,11 +1439,6 @@ export default function ProfilePage() {
                   {renderRoleBadgeText(mentionPreviewBadgeRole)}
                 </span>
               </span>
-              {typeof mentionProfile.profileId === "number" ? (
-                <span className="truncate text-[10px] font-mono uppercase tracking-[0.14em] text-gray-500">
-                  Profile #{mentionProfile.profileId}
-                </span>
-              ) : null}
             </span>
           </span>
         </span>
