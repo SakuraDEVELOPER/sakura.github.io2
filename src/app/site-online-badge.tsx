@@ -23,6 +23,7 @@ type SiteOnlineBadgeProps = {
   count: number | null;
   className?: string;
   profileHrefBuilder?: (profileId: number) => string;
+  defaultVisible?: boolean;
 };
 
 function buildInitials(user: SiteOnlineUser) {
@@ -56,6 +57,7 @@ export function SiteOnlineBadge({
   count,
   className = "",
   profileHrefBuilder,
+  defaultVisible = false,
 }: SiteOnlineBadgeProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
@@ -132,6 +134,8 @@ export function SiteOnlineBadge({
     };
   }, [isOpen]);
 
+  const isHighlighted = defaultVisible || isActive;
+
   return (
     <div
       ref={rootRef}
@@ -143,7 +147,7 @@ export function SiteOnlineBadge({
         type="button"
         onClick={() => setIsOpen((current) => !current)}
         className={`inline-flex h-[36px] items-center justify-center gap-2 whitespace-nowrap rounded-full border px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition ${
-          isActive
+          isHighlighted
             ? "border-[#ffb7c5]/35 bg-[#140d11] text-[#ffe2ea] shadow-[0_0_24px_rgba(255,183,197,0.12)]"
             : "border-transparent bg-transparent text-[#ffe2ea]"
         }`}

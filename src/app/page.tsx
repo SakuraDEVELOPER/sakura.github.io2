@@ -1606,6 +1606,8 @@ export default function Home() {
           </div>
         </section>
 
+        <FeatureShowcase />
+
         <TrialCta
           onClick={() => {
             void handleHeroTrialClick();
@@ -1624,8 +1626,6 @@ export default function Home() {
             desc="Быстрое обновление офсетов после патчей Valve."
           />
         </section>
-
-        <FeatureShowcase />
         <SetupSteps />
         <DownloadSection />
       </div>
