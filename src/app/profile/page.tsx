@@ -3223,7 +3223,6 @@ export default function ProfilePage() {
                 {visibleCurrentUser && !isCurrentAccountBanned && !isCurrentAccountVerificationLocked ? (
                   <form onSubmit={handleCommentSubmit} className="mt-5">
                     <label className="block">
-                      <span className="mb-2 block font-mono text-[10px] uppercase tracking-[0.28em] text-gray-500">New Comment</span>
                       <textarea
                         ref={commentTextareaRef}
                         value={commentInput}
