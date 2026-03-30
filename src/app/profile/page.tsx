@@ -1769,11 +1769,7 @@ export default function ProfilePage() {
 
   const handleUsernameSave = async () => {
     const bridge = getWindowState().sakuraFirebaseAuth;
-    const rawUsername =
-      (!isOwner && isAdminPanelOpen
-        ? adminUsernameInputRef.current?.value
-        : ownerUsernameInputRef.current?.value) ?? usernameInput;
-    const nextUsername = normalizeUsernameDraft(rawUsername);
+    const nextUsername = normalizeUsernameDraft(usernameInput);
 
     if (!bridge) {
       return;
