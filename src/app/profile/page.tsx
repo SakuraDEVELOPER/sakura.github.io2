@@ -17,6 +17,7 @@ import {
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { readCachedAuthSnapshot } from "@/lib/auth-snapshot-cache";
 import { readCachedProfileSnapshot, writeCachedProfileSnapshot } from "@/lib/profile-cache";
+import { readCachedProfileComments, writeCachedProfileComments } from "@/lib/profile-comments-cache";
 
 type UserProfile = {
   uid: string;
@@ -1009,6 +1010,7 @@ const getInitialProfile = (currentUser: UserProfile | null, requestedProfileId: 
 const getInitialBootstrap = () => {
   const currentUser = getInitialCurrentUser();
   const requestedProfileId = getInitialRequestedProfileId();
+  const initialProfile = getInitialProfile(currentUser, requestedProfileId);
   const currentUserProfileId =
     currentUser && !currentUser.isAnonymous && typeof currentUser.profileId === "number"
       ? currentUser.profileId
@@ -1037,7 +1039,10 @@ const getInitialBootstrap = () => {
     authError: typeof window === "undefined" ? null : getWindowState().sakuraFirebaseAuthError ?? null,
     currentUser,
     requestedProfileId,
-    profile: getInitialProfile(currentUser, requestedProfileId),
+    profile: initialProfile,
+    comments: readCachedProfileComments<ProfileComment>(
+      initialProfile?.profileId ?? requestedProfileId
+    ),
   };
 };
 
@@ -1085,7 +1090,7 @@ export default function ProfilePage() {
   const [isAdminVerificationSaving, setIsAdminVerificationSaving] = useState(false);
   const [adminVerificationError, setAdminVerificationError] = useState<string | null>(null);
   const [adminVerificationSuccess, setAdminVerificationSuccess] = useState<string | null>(null);
-  const [comments, setComments] = useState<ProfileComment[]>([]);
+  const [comments, setComments] = useState<ProfileComment[]>(bootstrap.comments);
   const [commentAuthorProfiles, setCommentAuthorProfiles] = useState<Record<number, UserProfile>>({});
   const [commentAuthorProfilesByCommentId, setCommentAuthorProfilesByCommentId] = useState<Record<string, UserProfile>>({});
   const [commentMentionProfilesByKey, setCommentMentionProfilesByKey] = useState<Record<string, UserProfile>>({});
@@ -1145,6 +1150,14 @@ export default function ProfilePage() {
 
     writeCachedProfileSnapshot(profile);
   }, [profile]);
+
+  useEffect(() => {
+    if (!profile?.profileId) {
+      return;
+    }
+
+    writeCachedProfileComments(profile.profileId, comments);
+  }, [profile?.profileId, comments]);
 
   useEffect(() => {
     syncTextareaHeight(commentTextareaRef.current);
@@ -2479,6 +2492,10 @@ export default function ProfilePage() {
     if (!bridge) return;
 
     let isCancelled = false;
+    const cachedComments = readCachedProfileComments<ProfileComment>(activeProfile.profileId);
+
+    setComments(cachedComments);
+
     setIsCommentsLoading(true);
     setCommentsError(null);
 
@@ -2490,8 +2507,10 @@ export default function ProfilePage() {
       })
       .catch((error) => {
         if (isCancelled) return;
-        setComments([]);
-        setCommentsError(getProfileActionErrorMessage(error, "Could not load profile comments."));
+        if (!cachedComments.length) {
+          setComments([]);
+          setCommentsError(getProfileActionErrorMessage(error, "Could not load profile comments."));
+        }
       })
       .finally(() => {
         if (!isCancelled) {
