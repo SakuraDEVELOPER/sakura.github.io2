@@ -143,7 +143,7 @@ const AUTH_STATE_SETTLED_EVENT = "sakura-auth-state-settled";
 const USER_UPDATE_EVENT = "sakura-user-update";
 const PROFILE_PATH_STORAGE_KEY = "sakura-profile-path";
 const CURRENT_PROFILE_ID_STORAGE_KEY = "sakura-current-profile-id";
-const PROFILE_BUILD_MARKER = "role-colors-v57";
+const PROFILE_BUILD_MARKER = "role-colors-v59";
 const COMMENT_MENTION_PATTERN = /@([A-Za-z\u0400-\u04FF0-9._-]{3,24})/g;
 const COMMENT_MENTION_DRAFT_PATTERN = /(^|[\s([{"'`])@([A-Za-z\u0400-\u04FF0-9._-]{2,24})$/;
 const COMMENT_MENTION_TOKEN_CHARACTER_PATTERN = /[A-Za-z\u0400-\u04FF0-9._-]/;
@@ -3347,8 +3347,10 @@ export default function ProfilePage() {
                   <div className="min-w-0">
                     <h1 style={profileHeadlineStyle} className="min-w-0 truncate text-3xl font-black uppercase tracking-tighter">{primaryName}</h1>
                     {hasUsername ? <p className="mt-2 text-sm font-medium text-[#c7d4cc]">@{activeProfile.login}</p> : isOwner ? <p className="mt-2 text-sm text-gray-500">Login not set yet.</p> : null}
+                    {typeof activeProfile.profileId === "number" ? <div className="mt-3">
+                      <span style={roleBadgeTextStyle} className="inline-flex shrink-0 items-center whitespace-nowrap rounded-full border border-[#3a2a31] bg-[#140d11] px-3 py-1 text-[10px] font-bold text-[#ffb7c5]">ID: {activeProfile.profileId}</span>
+                    </div> : null}
                     <div className="mt-3 flex flex-wrap items-center gap-3">
-                      {typeof activeProfile.profileId === "number" ? <span style={roleBadgeTextStyle} className="inline-flex shrink-0 items-center whitespace-nowrap rounded-full border border-[#3a2a31] bg-[#140d11] px-3 py-1 text-[10px] font-bold text-[#ffb7c5]">ID: {activeProfile.profileId}</span> : null}
                       {profileRoles.map((role) => <span key={role} title={roleBadgeLabel(role)} style={{ ...roleBadgeStyle(role), ...roleBadgeTextStyle }} className="inline-flex shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-[10px] font-bold"><span aria-hidden="true" className="inline-flex items-center">{renderRoleBadgeText(role)}</span></span>)}
                     </div>
                   </div>
