@@ -143,7 +143,7 @@ const AUTH_STATE_SETTLED_EVENT = "sakura-auth-state-settled";
 const USER_UPDATE_EVENT = "sakura-user-update";
 const PROFILE_PATH_STORAGE_KEY = "sakura-profile-path";
 const CURRENT_PROFILE_ID_STORAGE_KEY = "sakura-current-profile-id";
-const PROFILE_BUILD_MARKER = "role-colors-v54";
+const PROFILE_BUILD_MARKER = "role-colors-v55";
 const COMMENT_MENTION_PATTERN = /@([A-Za-z\u0400-\u04FF0-9._-]{3,24})/g;
 const COMMENT_MENTION_DRAFT_PATTERN = /(^|[\s([{"'`])@([A-Za-z\u0400-\u04FF0-9._-]{2,24})$/;
 const COMMENT_MENTION_TOKEN_CHARACTER_PATTERN = /[A-Za-z\u0400-\u04FF0-9._-]/;
@@ -1620,6 +1620,84 @@ export default function ProfilePage() {
     if (!mentionProfiles.length) {
       return null;
     }
+
+    return (
+      <div className="mt-3 rounded-[20px] border border-[#232323] bg-[#090909] px-4 py-3">
+        <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-gray-500">
+          Attached Accounts
+        </p>
+        <div className="mt-3 flex flex-col gap-2">
+          {mentionProfiles.map((profile) => {
+            const profileRole = resolveMentionProfileRole(profile);
+            const profileBadgeRole = deriveVisibleProfileRoles(profile)[0] ?? "user";
+            const profilePreviewName = profileNameOf(profile);
+            const profilePreviewInitials = initialsOf(profile);
+            const profileMentionLogin = profile.login ? `@${profile.login}` : profilePreviewName;
+            const profileSecondaryName =
+              profilePreviewName && profilePreviewName !== profile.login
+                ? profilePreviewName
+                : null;
+
+            return (
+              <div
+                key={`${mode}:${profile.uid}`}
+                className="w-full min-w-0 overflow-hidden rounded-[18px] border border-[#2a2022] bg-[#120d11]"
+              >
+                <div className="flex min-w-0 items-stretch">
+                  <a
+                    href={typeof profile.profileId === "number" ? profilePath(profile.profileId) : "#"}
+                    className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 transition hover:bg-[#171014]"
+                  >
+                    {profile.photoURL ? (
+                      <AvatarMedia
+                        src={profile.photoURL}
+                        alt={profilePreviewName}
+                        loading="lazy"
+                        decoding="async"
+                        className="h-10 w-10 shrink-0 rounded-2xl border border-[#2a2022] object-cover"
+                      />
+                    ) : (
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-[#2a2022] bg-[#171012] text-[11px] font-black uppercase text-[#ffb7c5]">
+                        {profilePreviewInitials}
+                      </span>
+                    )}
+                    <span className="min-w-0 flex-1">
+                      <span
+                        style={roleCommentAuthorStyle(profileRole)}
+                        className="block truncate text-sm font-semibold"
+                      >
+                        {profileMentionLogin}
+                      </span>
+                      {profileSecondaryName ? (
+                        <span className="mt-1 block truncate text-xs text-gray-400">
+                          {profileSecondaryName}
+                        </span>
+                      ) : null}
+                    </span>
+                    <span
+                      style={{ ...roleBadgeStyle(profileBadgeRole), ...roleBadgeTextStyle }}
+                      className="inline-flex shrink-0 items-center whitespace-nowrap rounded-full border px-3 py-1 text-[10px] font-bold"
+                    >
+                      <span aria-hidden="true" className="inline-flex items-center">
+                        {renderRoleBadgeText(profileBadgeRole)}
+                      </span>
+                    </span>
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => removeMentionAttachment(mode, profile)}
+                    className="inline-flex min-w-[112px] shrink-0 items-center justify-center border-l border-[#2a2022] bg-[#140d11] px-4 py-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#ffb7c5] transition hover:bg-[#1a1115] hover:text-white"
+                    aria-label={`Remove ${profilePreviewName} mention`}
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
 
     return (
       <div className="mt-3 rounded-[20px] border border-[#232323] bg-[#090909] px-4 py-3">
@@ -3439,12 +3517,16 @@ export default function ProfilePage() {
                           </div> : (!isEditingCommentMediaRemoved && comment.mediaURL ? <div className="mt-3 overflow-hidden rounded-[22px] border border-[#232323] bg-[#050505]">
                             <CommentMediaFrame src={comment.mediaURL} mediaType={comment.mediaType} alt={`${comment.authorName} comment attachment`} className="block max-h-[320px] w-full object-contain" controls={isCommentVideoMediaType(comment.mediaType)} />
                           </div> : null)}
+                          {editingCommentMediaFile ? <div className="mt-3 flex items-center">
+                            <button type="button" onClick={clearEditingCommentMediaSelection} disabled={isSavingCommentUpdate} className="inline-flex items-center justify-center rounded-full border border-[#2a2a2a] bg-[#101010] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-gray-300 transition hover:border-[#4a4a4a] hover:text-white disabled:cursor-not-allowed disabled:opacity-60">Remove</button>
+                          </div> : null}
+                          {!editingCommentMediaFile && comment.mediaURL && !isEditingCommentMediaRemoved ? <div className="mt-3 flex items-center">
+                            <button type="button" onClick={removeEditingCommentMedia} disabled={isSavingCommentUpdate} className="inline-flex items-center justify-center rounded-full border border-[#2a2a2a] bg-[#101010] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-gray-300 transition hover:border-[#4a4a4a] hover:text-white disabled:cursor-not-allowed disabled:opacity-60">Remove</button>
+                          </div> : null}
                           <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
                             <div className="flex flex-wrap items-center gap-3">
                               <button type="button" onClick={() => handleCommentUpdate(comment.id)} disabled={isSavingCommentUpdate || (!editingCommentMessage.trim() && !editingCommentMediaFile && !(comment.mediaURL && !isEditingCommentMediaRemoved))} className="inline-flex items-center justify-center rounded-full border border-[#ffb7c5]/30 bg-[#ffb7c5] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-black transition hover:bg-[#ffc8d3] disabled:cursor-not-allowed disabled:opacity-60">{isSavingCommentUpdate ? "Saving..." : "Save"}</button>
                               <button type="button" onClick={() => editingCommentMediaInputRef.current?.click()} disabled={isSavingCommentUpdate} className="inline-flex items-center justify-center rounded-full border border-[#3a2a31] bg-[#140d11] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-[#ffb7c5] transition hover:border-[#ffb7c5]/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-60">Media</button>
-                              {editingCommentMediaFile ? <button type="button" onClick={clearEditingCommentMediaSelection} disabled={isSavingCommentUpdate} className="inline-flex items-center justify-center rounded-full border border-[#2a2a2a] bg-[#101010] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-gray-300 transition hover:border-[#4a4a4a] hover:text-white disabled:cursor-not-allowed disabled:opacity-60">Remove</button> : null}
-                              {!editingCommentMediaFile && comment.mediaURL && !isEditingCommentMediaRemoved ? <button type="button" onClick={removeEditingCommentMedia} disabled={isSavingCommentUpdate} className="inline-flex items-center justify-center rounded-full border border-[#2a2a2a] bg-[#101010] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-gray-300 transition hover:border-[#4a4a4a] hover:text-white disabled:cursor-not-allowed disabled:opacity-60">Remove</button> : null}
                               <button type="button" onClick={handleCommentEditCancel} disabled={isSavingCommentUpdate} className="inline-flex items-center justify-center rounded-full border border-[#3a2a31] bg-[#140d11] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-[#ffb7c5] transition hover:border-[#ffb7c5]/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-60">Cancel</button>
                             </div>
                             <span className="text-xs text-gray-500">{editingCommentMessage.trim().length}/280</span>
