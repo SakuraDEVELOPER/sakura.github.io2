@@ -8,6 +8,7 @@ import { AvatarMedia, AVATAR_FILE_ACCEPT } from "../avatar-media";
 import { HeaderSocialLinks } from "../header-social-links";
 import { SiteOnlineBadge } from "../site-online-badge";
 import { uploadSupabaseCommentMediaTest } from "@/lib/supabase-storage";
+import { isSupabaseConfigured } from "@/lib/supabase";
 
 type UserProfile = {
   uid: string;
@@ -2322,7 +2323,7 @@ export default function ProfilePage() {
                         <button type="button" onClick={() => commentMediaInputRef.current?.click()} className="inline-flex items-center justify-center rounded-full border border-[#3a2a31] bg-[#140d11] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-[#ffb7c5] transition hover:border-[#ffb7c5]/40 hover:text-white">
                           Media
                         </button>
-                        <button type="button" onClick={handleSupabaseUploadTest} disabled={!commentMediaFile || isSupabaseUploadTesting} className="inline-flex items-center justify-center rounded-full border border-[#2c3152] bg-[#0f1220] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-[#9ec1ff] transition hover:border-[#9ec1ff]/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-60">
+                        <button type="button" onClick={handleSupabaseUploadTest} disabled={!isSupabaseConfigured || !commentMediaFile || isSupabaseUploadTesting} className="inline-flex items-center justify-center rounded-full border border-[#2c3152] bg-[#0f1220] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-[#9ec1ff] transition hover:border-[#9ec1ff]/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-60">
                           {isSupabaseUploadTesting ? "Testing..." : "Test Upload"}
                         </button>
                       </div>

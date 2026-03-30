@@ -1,4 +1,4 @@
-import { supabase, supabaseCommentMediaBucket } from "./supabase";
+import { isSupabaseConfigured, supabase, supabaseCommentMediaBucket } from "./supabase";
 
 const MAX_TEST_UPLOAD_BYTES = 50 * 1024 * 1024;
 const ALLOWED_COMMENT_MEDIA_TYPES = new Set([
@@ -35,6 +35,10 @@ export function validateSupabaseCommentMediaFile(file: File) {
 }
 
 export async function uploadSupabaseCommentMediaTest(file: File) {
+  if (!isSupabaseConfigured || !supabase) {
+    throw new Error("Supabase is not configured for this build.");
+  }
+
   validateSupabaseCommentMediaFile(file);
 
   const objectPath = buildTestObjectPath(file);
