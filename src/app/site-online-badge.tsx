@@ -219,7 +219,7 @@ export function SiteOnlineBadge({
 
     const refreshTimer = window.setInterval(() => {
       void loadUsers();
-    }, 20000);
+    }, 10000);
 
     window.addEventListener(PRESENCE_DIRTY_EVENT, handleRefreshRequest);
     window.addEventListener("pageshow", handleRefreshRequest);

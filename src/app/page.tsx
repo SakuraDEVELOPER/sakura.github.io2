@@ -1642,7 +1642,7 @@ export default function Home() {
       if (!intervalId) {
         intervalId = window.setInterval(() => {
           void refreshSiteOnlineCount();
-        }, 20000);
+        }, 10000);
       }
     };
 

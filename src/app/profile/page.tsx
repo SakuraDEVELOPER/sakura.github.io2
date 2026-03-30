@@ -1299,7 +1299,7 @@ export default function ProfilePage() {
     void refreshSiteOnlineCount();
     const intervalId = window.setInterval(() => {
       void refreshSiteOnlineCount();
-    }, 20000);
+    }, 10000);
 
     window.addEventListener(USER_UPDATE_EVENT, handleRefreshRequest);
     window.addEventListener(PRESENCE_DIRTY_EVENT, handleRefreshRequest);
