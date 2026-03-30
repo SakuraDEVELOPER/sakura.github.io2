@@ -762,7 +762,7 @@ const roleCommentAuthorColor = (role: string | null | undefined) => {
 const roleCommentAuthorStyle = (role: string | null | undefined): CSSProperties => ({
   color: roleCommentAuthorColor(role),
 });
-const ROLE_MANAGER_NAMES = new Set(["root"]);
+const ROLE_MANAGER_NAMES = new Set(["root", "co-owner"]);
 const COMMENT_MODERATOR_ROLE_NAMES = new Set([
   "root",
   "co-owner",
@@ -2658,7 +2658,7 @@ export default function ProfilePage() {
 
               {false && canManageRoleAssignments && activeProfile?.profileId ? <div className="rounded-[32px] border border-[#201517] bg-[#0d0d0d] px-7 py-7 shadow-[0_0_60px_rgba(255,183,197,0.06)]">
                 <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-[#ffb7c5]">Role Access</p>
-                <p className="mt-3 text-xs leading-relaxed text-gray-400">Open any participant profile and manage its roles here. Only root accounts can save changes.</p>
+                <p className="mt-3 text-xs leading-relaxed text-gray-400">Open any participant profile and manage its roles here. Root and co-owner accounts can save changes.</p>
                 <div className="mt-5">
                   <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-gray-500">Assigned Roles</p>
                   <div className="mt-3 flex flex-wrap gap-3">{normalizedDraftRoles.map((role) => {

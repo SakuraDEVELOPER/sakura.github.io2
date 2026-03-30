@@ -714,7 +714,7 @@
     );
   };
 
-  const ROLE_MANAGER_NAMES = new Set(["root"]);
+  const ROLE_MANAGER_NAMES = new Set(["root", "co-owner"]);
   const COMMENT_MODERATOR_ROLE_NAMES = new Set([
     "root",
     "co-owner",
@@ -1251,7 +1251,7 @@
       if (!canManageRoles(actorSnapshot?.roles ?? [])) {
         throw createFirebaseError(
           "admin/forbidden",
-          "Only root accounts can use the admin panel."
+          "Only root and co-owner accounts can use the admin panel."
         );
       }
 
@@ -3215,7 +3215,7 @@
       if (!canManageRoles(window.sakuraCurrentUserSnapshot?.roles ?? [])) {
         throw createFirebaseError(
           "roles/forbidden",
-          "Only root can manage user roles."
+          "Only root and co-owner can manage user roles."
         );
       }
 
