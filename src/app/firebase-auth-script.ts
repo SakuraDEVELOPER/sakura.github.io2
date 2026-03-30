@@ -109,6 +109,12 @@
 
   const resolvePhotoURL = (details, fallbackPhotoURL = null) =>
     hasOwn(details, "photoURL") ? details.photoURL ?? null : fallbackPhotoURL ?? null;
+  const resolveAvatarPath = (details, fallbackAvatarPath = null) =>
+    hasOwn(details, "avatarPath") ? details.avatarPath ?? null : fallbackAvatarPath ?? null;
+  const resolveAvatarType = (details, fallbackAvatarType = null) =>
+    hasOwn(details, "avatarType") ? details.avatarType ?? null : fallbackAvatarType ?? null;
+  const resolveAvatarSize = (details, fallbackAvatarSize = null) =>
+    hasOwn(details, "avatarSize") ? details.avatarSize ?? null : fallbackAvatarSize ?? null;
   const resolveBannedAt = (details, fallbackBannedAt = null) =>
     hasOwn(details, "bannedAt")
       ? typeof details.bannedAt === "string"
@@ -229,6 +235,47 @@
     }
 
     return canvas.toDataURL("image/jpeg", AVATAR_EXPORT_QUALITY);
+  };
+
+  const normalizeAvatarUploadPath = (value) =>
+    typeof value === "string" && value ? value : null;
+  const normalizeAvatarUploadType = (value) =>
+    typeof value === "string" && AVATAR_CONTENT_TYPES.has(value)
+      ? value
+      : null;
+  const normalizeAvatarUploadSize = (value) =>
+    typeof value === "number" && Number.isFinite(value) && value > 0
+      ? Math.round(value)
+      : null;
+  const toPreparedAvatarUpload = (value) => {
+    if (!value || typeof value !== "object" || value instanceof File) {
+      return null;
+    }
+
+    const photoURL = typeof value.photoURL === "string" && value.photoURL ? value.photoURL : null;
+
+    if (!photoURL) {
+      return null;
+    }
+
+    return {
+      photoURL,
+      avatarPath: normalizeAvatarUploadPath(value.avatarPath),
+      avatarType: normalizeAvatarUploadType(value.avatarType),
+      avatarSize: normalizeAvatarUploadSize(value.avatarSize),
+    };
+  };
+  const prepareAvatarUpload = async (value, uid) => {
+    if (value instanceof File) {
+      return {
+        photoURL: await resolvePersistedAvatarUrl(uid, value),
+        avatarPath: null,
+        avatarType: null,
+        avatarSize: null,
+      };
+    }
+
+    return toPreparedAvatarUpload(value);
   };
 
   const createInlineCommentMedia = async (file) => {
@@ -965,6 +1012,9 @@
       typeof details.emailVerified === "boolean" ? details.emailVerified : Boolean(user.emailVerified),
     profileId: typeof details.profileId === "number" ? details.profileId : null,
     photoURL: resolvePhotoURL(details, user.photoURL ?? null),
+    avatarPath: resolveAvatarPath(details, null),
+    avatarType: resolveAvatarType(details, null),
+    avatarSize: resolveAvatarSize(details, null),
     providerIds: Array.isArray(details.providerIds) ? details.providerIds : getProviderIds(user),
     roles: normalizeRoles(details.roles),
     isBanned: details.isBanned === true,
@@ -992,6 +1042,9 @@
           displayName: details.displayName ?? user.displayName ?? details.login ?? null,
           profileId: typeof details.profileId === "number" ? details.profileId : null,
           photoURL: resolvePhotoURL(details, user.photoURL ?? null),
+          avatarPath: resolveAvatarPath(details, null),
+          avatarType: resolveAvatarType(details, null),
+          avatarSize: resolveAvatarSize(details, null),
           roles: normalizeRoles(details.roles),
           isBanned: details.isBanned === true,
           bannedAt: resolveBannedAt(details),
@@ -1025,6 +1078,9 @@
           : null,
     profileId: typeof details.profileId === "number" ? details.profileId : null,
     photoURL: resolvePhotoURL(details, null),
+    avatarPath: resolveAvatarPath(details, null),
+    avatarType: resolveAvatarType(details, null),
+    avatarSize: resolveAvatarSize(details, null),
     roles: normalizeRoles(details.roles),
     isBanned: details.isBanned === true,
     bannedAt: resolveBannedAt(details),
@@ -2631,29 +2687,13 @@
 
       await ensureVerifiedSessionAccess(user, "Verify your email before updating the avatar.");
 
-      if (!(file instanceof File)) {
+      const avatarUpload = await prepareAvatarUpload(file, user.uid);
+
+      if (!avatarUpload?.photoURL) {
         throw createFirebaseError("storage/invalid-file", "Choose an image before uploading.");
       }
 
-      if (!AVATAR_CONTENT_TYPES.has(file.type)) {
-        throw createFirebaseError(
-          "storage/unsupported-file-type",
-          "Avatar must be PNG, JPG, WEBP, GIF, MP4, or WEBM."
-        );
-      }
-
-      if (file.size > MAX_AVATAR_BYTES) {
-        throw createFirebaseError("storage/file-too-large", "PNG and JPG avatars must be 5 MB or smaller.");
-      }
-
-      if (PASSTHROUGH_AVATAR_CONTENT_TYPES.has(file.type) && file.size > MAX_PASSTHROUGH_AVATAR_BYTES) {
-        throw createFirebaseError(
-          "storage/file-too-large",
-          "GIF, WEBP, MP4, and WEBM avatars must be 700 KB or smaller without Storage."
-        );
-      }
-
-      const photoURL = await resolvePersistedAvatarUrl(user.uid, file);
+      const photoURL = avatarUpload.photoURL;
       const userRef = userRefFor(user.uid);
       const existingSnapshot = await getDoc(userRef);
       const existingData = existingSnapshot.exists() ? existingSnapshot.data() : {};
@@ -2670,6 +2710,9 @@
           userRef,
           {
             photoURL,
+            avatarPath: avatarUpload.avatarPath ?? null,
+            avatarType: avatarUpload.avatarType ?? null,
+            avatarSize: avatarUpload.avatarSize ?? null,
             updatedAt: new Date().toISOString(),
           },
           { merge: true }
@@ -2687,6 +2730,9 @@
             userRef,
             {
               photoURL,
+              avatarPath: avatarUpload.avatarPath ?? null,
+              avatarType: avatarUpload.avatarType ?? null,
+              avatarSize: avatarUpload.avatarSize ?? null,
               updatedAt: new Date().toISOString(),
             },
             { merge: true }
@@ -2710,6 +2756,9 @@
         toUserSnapshot(user, {
           ...currentDetails,
           photoURL,
+          avatarPath: avatarUpload.avatarPath ?? null,
+          avatarType: avatarUpload.avatarType ?? null,
+          avatarSize: avatarUpload.avatarSize ?? null,
         })
       );
     };
@@ -2746,6 +2795,9 @@
           userRef,
           {
             photoURL: null,
+            avatarPath: null,
+            avatarType: null,
+            avatarSize: null,
             updatedAt: new Date().toISOString(),
           },
           { merge: true }
@@ -2762,6 +2814,9 @@
             userRef,
             {
               photoURL: null,
+              avatarPath: null,
+              avatarType: null,
+              avatarSize: null,
               updatedAt: new Date().toISOString(),
             },
             { merge: true }
@@ -2782,6 +2837,9 @@
         toUserSnapshot(user, {
           ...currentDetails,
           photoURL: null,
+          avatarPath: null,
+          avatarType: null,
+          avatarSize: null,
         })
       );
     };
@@ -2893,41 +2951,28 @@
         throw createFirebaseError("profile/invalid-id", "Profile id must be a positive number.");
       }
 
-      if (!(file instanceof File)) {
-        throw createFirebaseError("storage/invalid-file", "Choose an image before uploading.");
-      }
-
-      if (!AVATAR_CONTENT_TYPES.has(file.type)) {
-        throw createFirebaseError(
-          "storage/unsupported-file-type",
-          "Avatar must be PNG, JPG, WEBP, GIF, MP4, or WEBM."
-        );
-      }
-
-      if (file.size > MAX_AVATAR_BYTES) {
-        throw createFirebaseError("storage/file-too-large", "PNG and JPG avatars must be 5 MB or smaller.");
-      }
-
-      if (PASSTHROUGH_AVATAR_CONTENT_TYPES.has(file.type) && file.size > MAX_PASSTHROUGH_AVATAR_BYTES) {
-        throw createFirebaseError(
-          "storage/file-too-large",
-          "GIF, WEBP, MP4, and WEBM avatars must be 700 KB or smaller without Storage."
-        );
-      }
-
       const targetDoc = await findUserByProfileId(profileId);
 
       if (!targetDoc) {
         return null;
       }
 
-      const photoURL = await resolvePersistedAvatarUrl(targetDoc.id, file);
+      const avatarUpload = await prepareAvatarUpload(file, targetDoc.id);
+
+      if (!avatarUpload?.photoURL) {
+        throw createFirebaseError("storage/invalid-file", "Choose an image before uploading.");
+      }
+
+      const photoURL = avatarUpload.photoURL;
 
       try {
         await setDoc(
           userRefFor(targetDoc.id),
           {
             photoURL,
+            avatarPath: avatarUpload.avatarPath ?? null,
+            avatarType: avatarUpload.avatarType ?? null,
+            avatarSize: avatarUpload.avatarSize ?? null,
             updatedAt: new Date().toISOString(),
           },
           { merge: true }
@@ -2953,6 +2998,9 @@
       return refreshStoredUserSnapshot(targetDoc.id, {
         ...targetDoc.data(),
         photoURL,
+        avatarPath: avatarUpload.avatarPath ?? null,
+        avatarType: avatarUpload.avatarType ?? null,
+        avatarSize: avatarUpload.avatarSize ?? null,
       });
     };
 
@@ -2982,6 +3030,9 @@
           userRefFor(targetDoc.id),
           {
             photoURL: null,
+            avatarPath: null,
+            avatarType: null,
+            avatarSize: null,
             updatedAt: new Date().toISOString(),
           },
           { merge: true }
@@ -3000,6 +3051,9 @@
       return refreshStoredUserSnapshot(targetDoc.id, {
         ...targetDoc.data(),
         photoURL: null,
+        avatarPath: null,
+        avatarType: null,
+        avatarSize: null,
       });
     };
     const adminSetProfileBan = async (profileId, nextIsBanned) => {

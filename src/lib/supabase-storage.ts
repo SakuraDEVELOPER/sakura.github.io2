@@ -7,6 +7,15 @@ const ALLOWED_COMMENT_MEDIA_TYPES = new Set([
   "image/webp",
   "image/gif",
 ]);
+const ALLOWED_AVATAR_MEDIA_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "video/mp4",
+  "video/webm",
+]);
+const MAX_AVATAR_UPLOAD_BYTES = 50 * 1024 * 1024;
 
 export type SupabaseCommentMediaUploadResult = {
   bucket: string;
@@ -43,12 +52,20 @@ export function validateSupabaseCommentMediaFile(file: File) {
   }
 }
 
-async function uploadCommentMediaObject(file: File, objectPath: string): Promise<SupabaseCommentMediaUploadResult> {
+export function validateSupabaseAvatarFile(file: File) {
+  if (!ALLOWED_AVATAR_MEDIA_TYPES.has(file.type)) {
+    throw new Error("Avatar must be PNG, JPG, WEBP, GIF, MP4, or WEBM.");
+  }
+
+  if (file.size <= 0 || file.size > MAX_AVATAR_UPLOAD_BYTES) {
+    throw new Error("The selected avatar exceeds the 50 MB limit.");
+  }
+}
+
+async function uploadStorageObject(file: File, objectPath: string): Promise<SupabaseCommentMediaUploadResult> {
   if (!isSupabaseConfigured || !supabase) {
     throw new Error("Supabase is not configured for this build.");
   }
-
-  validateSupabaseCommentMediaFile(file);
   const { error } = await supabase.storage
     .from(supabaseCommentMediaBucket)
     .upload(objectPath, file, {
@@ -78,14 +95,24 @@ export async function uploadSupabaseCommentMedia(
   file: File,
   userId: string
 ): Promise<SupabaseCommentMediaUploadResult> {
-  return uploadCommentMediaObject(file, buildObjectPath(file, "comments", userId));
+  validateSupabaseCommentMediaFile(file);
+  return uploadStorageObject(file, buildObjectPath(file, "comments", userId));
+}
+
+export async function uploadSupabaseAvatarMedia(
+  file: File,
+  userId: string
+): Promise<SupabaseCommentMediaUploadResult> {
+  validateSupabaseAvatarFile(file);
+  return uploadStorageObject(file, buildObjectPath(file, "avatars", userId));
 }
 
 export async function uploadSupabaseCommentMediaTest(file: File) {
-  return uploadCommentMediaObject(file, buildObjectPath(file, "tests"));
+  validateSupabaseCommentMediaFile(file);
+  return uploadStorageObject(file, buildObjectPath(file, "tests"));
 }
 
-export async function deleteSupabaseCommentMedia(objectPath: string) {
+export async function deleteSupabaseStorageObject(objectPath: string) {
   if (!isSupabaseConfigured || !supabase) {
     throw new Error("Supabase is not configured for this build.");
   }
@@ -103,4 +130,8 @@ export async function deleteSupabaseCommentMedia(objectPath: string) {
   if (error) {
     throw error;
   }
+}
+
+export async function deleteSupabaseCommentMedia(objectPath: string) {
+  return deleteSupabaseStorageObject(objectPath);
 }

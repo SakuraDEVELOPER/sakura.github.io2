@@ -9,8 +9,9 @@ import { HeaderSocialLinks } from "../header-social-links";
 import { SiteOnlineBadge } from "../site-online-badge";
 import {
   deleteSupabaseCommentMedia,
+  deleteSupabaseStorageObject,
+  uploadSupabaseAvatarMedia,
   uploadSupabaseCommentMedia,
-  uploadSupabaseCommentMediaTest,
   type SupabaseCommentMediaUploadResult,
 } from "@/lib/supabase-storage";
 import { isSupabaseConfigured } from "@/lib/supabase";
@@ -26,6 +27,9 @@ type UserProfile = {
   displayName: string | null;
   profileId: number | null;
   photoURL: string | null;
+  avatarPath?: string | null;
+  avatarType?: string | null;
+  avatarSize?: number | null;
   roles: string[];
   isBanned?: boolean;
   bannedAt?: string | null;
@@ -59,7 +63,12 @@ type CommentMediaPayload = {
   mediaSize: number;
 };
 
-type SupabaseUploadTestResult = SupabaseCommentMediaUploadResult;
+type AvatarUploadPayload = {
+  photoURL: string;
+  avatarType: string;
+  avatarPath: string;
+  avatarSize: number;
+};
 
 type Bridge = {
   getProfileById: (profileId: number) => Promise<UserProfile | null>;
@@ -86,9 +95,12 @@ type Bridge = {
   adminSetProfileBan: (profileId: number, isBanned: boolean) => Promise<UserProfile | null>;
   adminSetProfileEmailVerification: (profileId: number, isVerified: boolean) => Promise<UserProfile | null>;
   updateProfileRoles: (profileId: number, roles: string[]) => Promise<UserProfile | null>;
-  updateAvatar: (file: File) => Promise<UserProfile | null>;
+  updateAvatar: (file: File | AvatarUploadPayload) => Promise<UserProfile | null>;
   deleteAvatar: () => Promise<UserProfile | null>;
-  adminUpdateProfileAvatar: (profileId: number, file: File) => Promise<UserProfile | null>;
+  adminUpdateProfileAvatar: (
+    profileId: number,
+    file: File | AvatarUploadPayload
+  ) => Promise<UserProfile | null>;
   adminDeleteProfileAvatar: (profileId: number) => Promise<UserProfile | null>;
   syncPresence: (options?: { path?: string; source?: string; forceVisit?: boolean }) => Promise<UserProfile | null>;
   getSiteOnlineCount: () => Promise<number>;
@@ -121,7 +133,7 @@ const AUTH_STATE_SETTLED_EVENT = "sakura-auth-state-settled";
 const USER_UPDATE_EVENT = "sakura-user-update";
 const PROFILE_PATH_STORAGE_KEY = "sakura-profile-path";
 const CURRENT_PROFILE_ID_STORAGE_KEY = "sakura-current-profile-id";
-const PROFILE_BUILD_MARKER = "role-colors-v52";
+const PROFILE_BUILD_MARKER = "role-colors-v53";
 const repoBasePath = "/sakura.github.io";
 const COMMENT_MEDIA_FILE_ACCEPT = ".png,.jpg,.jpeg,.webp,.gif";
 const PRESENCE_ACTIVE_WINDOW_MS = 5 * 60 * 1000;
@@ -234,6 +246,8 @@ const getCommentWriteDeniedMessage = (hasMedia: boolean) =>
     : "Comment could not be saved. Check Firestore rules for profileComments.";
 const getSupabaseCommentMediaUnavailableMessage = () =>
   "Supabase media upload is not configured for this build yet. Add NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, and NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET to the deployed site build.";
+const getSupabaseAvatarUnavailableMessage = () =>
+  "Supabase avatar upload is not configured for this build yet. Add NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, and NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET to the deployed site build.";
 const toCommentMediaPayload = (
   uploadResult: SupabaseCommentMediaUploadResult
 ): CommentMediaPayload => ({
@@ -241,6 +255,14 @@ const toCommentMediaPayload = (
   mediaType: uploadResult.contentType,
   mediaPath: uploadResult.path,
   mediaSize: uploadResult.size,
+});
+const toAvatarUploadPayload = (
+  uploadResult: SupabaseCommentMediaUploadResult
+): AvatarUploadPayload => ({
+  photoURL: uploadResult.publicUrl,
+  avatarType: uploadResult.contentType,
+  avatarPath: uploadResult.path,
+  avatarSize: uploadResult.size,
 });
 const normalizeUsernameDraft = (value: string | null | undefined) =>
   String(value ?? "")
@@ -908,8 +930,6 @@ export default function ProfilePage() {
   const [commentMediaPreviewUrl, setCommentMediaPreviewUrl] = useState<string | null>(null);
   const [commentError, setCommentError] = useState<string | null>(null);
   const [commentSuccess, setCommentSuccess] = useState<string | null>(null);
-  const [isSupabaseUploadTesting, setIsSupabaseUploadTesting] = useState(false);
-  const [supabaseUploadTestResult, setSupabaseUploadTestResult] = useState<SupabaseUploadTestResult | null>(null);
   const [isCommentSubmitting, setIsCommentSubmitting] = useState(false);
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editingCommentMessage, setEditingCommentMessage] = useState("");
@@ -1691,23 +1711,51 @@ export default function ProfilePage() {
     event.target.value = "";
     const bridge = getWindowState().sakuraFirebaseAuth;
     if (!file || !bridge) return;
+    if (!isSupabaseConfigured) {
+      setAvatarError(getSupabaseAvatarUnavailableMessage());
+      return;
+    }
     setAvatarError(null);
     setAvatarSuccess(null);
     setIsAvatarUploading(true);
+
+    let uploadedAvatar: SupabaseCommentMediaUploadResult | null = null;
+
     try {
       let snapshot: UserProfile | null = null;
+      const targetUid =
+        isOwner ? visibleCurrentUser?.uid ?? activeProfile?.uid : activeProfile?.uid;
+
+      if (!targetUid) {
+        throw new Error("Could not resolve the target account for avatar upload.");
+      }
+
+      uploadedAvatar = await uploadSupabaseAvatarMedia(file, targetUid);
+      const avatarPayload = toAvatarUploadPayload(uploadedAvatar);
 
       if (isOwner) {
-        snapshot = await withAvatarActionTimeout(bridge.updateAvatar(file));
+        snapshot = await withAvatarActionTimeout(bridge.updateAvatar(avatarPayload));
       } else if (canOpenAdminPanel && activeProfile?.profileId) {
         snapshot = await withAvatarActionTimeout(
-          bridge.adminUpdateProfileAvatar(activeProfile.profileId, file)
+          bridge.adminUpdateProfileAvatar(activeProfile.profileId, avatarPayload)
         );
+      }
+
+      if (activeProfile?.avatarPath && activeProfile.avatarPath !== uploadedAvatar.path) {
+        void deleteSupabaseStorageObject(activeProfile.avatarPath).catch((cleanupError) => {
+          console.error("Failed to remove replaced avatar media:", cleanupError);
+        });
       }
 
       applyUpdatedProfileSnapshot(snapshot);
       setAvatarSuccess(isOwner ? "Avatar saved." : "Avatar updated.");
     } catch (error) {
+      if (uploadedAvatar?.path) {
+        void deleteSupabaseStorageObject(uploadedAvatar.path).catch((cleanupError) => {
+          console.error("Failed to cleanup uploaded avatar media:", cleanupError);
+        });
+      }
+
       setAvatarError(avatarErrorMessage(error));
     } finally {
       setIsAvatarUploading(false);
@@ -1733,6 +1781,12 @@ export default function ProfilePage() {
 
       applyUpdatedProfileSnapshot(snapshot);
       setAvatarSuccess("Avatar deleted.");
+
+      if (activeProfile?.avatarPath) {
+        void deleteSupabaseStorageObject(activeProfile.avatarPath).catch((cleanupError) => {
+          console.error("Failed to remove deleted avatar media:", cleanupError);
+        });
+      }
     } catch (error) {
       setAvatarError(avatarErrorMessage(error));
     } finally {
@@ -2043,39 +2097,13 @@ export default function ProfilePage() {
     const nextFile = event.target.files?.[0] ?? null;
     setCommentError(null);
     setCommentSuccess(null);
-    setSupabaseUploadTestResult(null);
     setCommentMediaFile(nextFile);
   };
 
   const clearCommentMediaSelection = () => {
     setCommentMediaFile(null);
-    setSupabaseUploadTestResult(null);
     if (commentMediaInputRef.current) {
       commentMediaInputRef.current.value = "";
-    }
-  };
-
-  const handleSupabaseUploadTest = async () => {
-    if (!commentMediaFile) {
-      setCommentError("Choose a media file before testing upload.");
-      return;
-    }
-
-    setCommentError(null);
-    setCommentSuccess(null);
-    setSupabaseUploadTestResult(null);
-    setIsSupabaseUploadTesting(true);
-
-    try {
-      const result = await uploadSupabaseCommentMediaTest(commentMediaFile);
-      setSupabaseUploadTestResult(result);
-      setCommentSuccess("Supabase test upload completed.");
-    } catch (error) {
-      setCommentError(
-        error instanceof Error ? error.message : "Could not upload the selected file to Supabase."
-      );
-    } finally {
-      setIsSupabaseUploadTesting(false);
     }
   };
 
@@ -2417,19 +2445,9 @@ export default function ProfilePage() {
                         <button type="button" onClick={() => commentMediaInputRef.current?.click()} className="inline-flex items-center justify-center rounded-full border border-[#3a2a31] bg-[#140d11] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-[#ffb7c5] transition hover:border-[#ffb7c5]/40 hover:text-white">
                           Media
                         </button>
-                        <button type="button" onClick={handleSupabaseUploadTest} disabled={isSupabaseUploadTesting} className="inline-flex items-center justify-center rounded-full border border-[#2c3152] bg-[#0f1220] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-[#9ec1ff] transition hover:border-[#9ec1ff]/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-60">
-                          {isSupabaseUploadTesting ? "Testing..." : "Test Upload"}
-                        </button>
                       </div>
                       <span className="text-xs text-gray-500">{commentInput.trim().length}/280</span>
                     </div>
-                    {supabaseUploadTestResult ? <div className="mt-3 rounded-[20px] border border-[#1d2c41] bg-[#09111c] px-4 py-3">
-                      <p className="font-mono text-[10px] uppercase tracking-[0.26em] text-[#9ec1ff]">Supabase Upload Test</p>
-                      <p className="mt-2 break-all text-xs text-gray-300">Path: {supabaseUploadTestResult.path}</p>
-                      <a href={supabaseUploadTestResult.publicUrl} target="_blank" rel="noreferrer" className="mt-2 inline-flex text-xs text-[#9ec1ff] transition hover:text-white">
-                        Open uploaded file
-                      </a>
-                    </div> : null}
                     {commentError ? <p className="mt-3 text-xs leading-relaxed text-[#ff9aa9]">{commentError}</p> : null}
                     {commentSuccess ? <p className="mt-3 text-xs leading-relaxed text-[#8ce5b2]">{commentSuccess}</p> : null}
                   </form>
