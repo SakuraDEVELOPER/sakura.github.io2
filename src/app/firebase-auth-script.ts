@@ -351,6 +351,8 @@
   const sanitizeLogin = (value) =>
     typeof value === "string"
       ? value
+          .normalize("NFKC")
+          .replace(/[\\u200B-\\u200D\\uFEFF]/g, "")
           .trim()
           .replace(/\\s+/g, "")
           .replace(/[^A-Za-z\u0400-\u04FF0-9._-]/g, "")

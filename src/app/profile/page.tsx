@@ -188,6 +188,12 @@ const getCommentWriteDeniedMessage = (hasMedia: boolean) =>
   hasMedia
     ? "Comment media could not be saved. If attachments are enabled, allow mediaURL and mediaType in profileComments rules."
     : "Comment could not be saved. Check Firestore rules for profileComments.";
+const normalizeUsernameDraft = (value: string | null | undefined) =>
+  String(value ?? "")
+    .normalize("NFKC")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .trim()
+    .replace(/\s+/g, "");
 const isEmailVerificationLockedForProfile = (user: UserProfile | null | undefined) =>
   Boolean(
     user &&
@@ -860,6 +866,8 @@ export default function ProfilePage() {
   const editingCommentTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const commentMediaInputRef = useRef<HTMLInputElement | null>(null);
   const editingCommentMediaInputRef = useRef<HTMLInputElement | null>(null);
+  const ownerUsernameInputRef = useRef<HTMLInputElement | null>(null);
+  const adminUsernameInputRef = useRef<HTMLInputElement | null>(null);
 
   const syncTextareaHeight = (element: HTMLTextAreaElement | null) => {
     if (!element) return;
@@ -1761,7 +1769,11 @@ export default function ProfilePage() {
 
   const handleUsernameSave = async () => {
     const bridge = getWindowState().sakuraFirebaseAuth;
-    const nextUsername = usernameInput.trim().replace(/\s+/g, "");
+    const rawUsername =
+      (!isOwner && isAdminPanelOpen
+        ? adminUsernameInputRef.current?.value
+        : ownerUsernameInputRef.current?.value) ?? usernameInput;
+    const nextUsername = normalizeUsernameDraft(rawUsername);
 
     if (!bridge) {
       return;
@@ -2323,7 +2335,7 @@ export default function ProfilePage() {
                 <div className="mt-5">
                   <label className="block">
                     <span className="mb-2 block font-mono text-[10px] uppercase tracking-[0.28em] text-gray-500">Login</span>
-                    <input type="text" value={usernameInput} minLength={3} maxLength={24} autoComplete="username" onChange={(event) => {
+                    <input ref={ownerUsernameInputRef} type="text" value={usernameInput} minLength={3} maxLength={24} autoComplete="username" onChange={(event) => {
                       setUsernameInput(event.target.value);
                       setUsernameError(null);
                       setUsernameSuccess(null);
@@ -2602,6 +2614,7 @@ export default function ProfilePage() {
                       <label className="mt-4 block">
                         <span className="mb-2 block text-xs text-gray-500">Sign-in login</span>
                         <input
+                          ref={adminUsernameInputRef}
                           type="text"
                           value={usernameInput}
                           minLength={3}
