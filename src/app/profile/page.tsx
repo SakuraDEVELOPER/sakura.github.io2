@@ -1437,20 +1437,26 @@ export default function ProfilePage() {
 
     return pickCommentAuthorAccentRole(profile.roles) ?? null;
   };
-  const renderMentionProfilePreview = (mentionProfile: UserProfile, mentionText: string) => {
-    const mentionProfileRole = resolveMentionProfileRole(mentionProfile);
-    const mentionPreviewName = profileNameOf(mentionProfile);
-    const mentionPreviewInitials = initialsOf(mentionProfile);
-    const mentionPreviewBadgeRole = deriveVisibleProfileRoles(mentionProfile)[0] ?? "user";
-    const mentionPreviewAlt = mentionPreviewName || mentionText;
+  const renderProfileHoverPreview = (
+    previewProfile: UserProfile,
+    fallbackLabel: string,
+    align: "center" | "start" = "center"
+  ) => {
+    const mentionProfileRole = resolveMentionProfileRole(previewProfile);
+    const mentionPreviewName = profileNameOf(previewProfile);
+    const mentionPreviewInitials = initialsOf(previewProfile);
+    const mentionPreviewBadgeRole = deriveVisibleProfileRoles(previewProfile)[0] ?? "user";
+    const mentionPreviewAlt = mentionPreviewName || fallbackLabel;
+    const previewAlignmentClassName =
+      align === "start" ? "left-0 translate-x-0" : "left-1/2 -translate-x-1/2";
 
     return (
-      <span className="absolute left-1/2 top-full z-30 mt-3 w-[260px] -translate-x-1/2 translate-y-2 rounded-[22px] border border-[#2a2023] bg-[#0c0b0d] px-4 py-4 opacity-0 shadow-[0_18px_50px_rgba(0,0,0,0.46),0_0_35px_rgba(255,183,197,0.08)] transition duration-150 ease-out invisible group-hover/mention:visible group-hover/mention:translate-y-0 group-hover/mention:opacity-100 group-focus-within/mention:visible group-focus-within/mention:translate-y-0 group-focus-within/mention:opacity-100">
+      <span className={`absolute ${previewAlignmentClassName} top-full z-30 mt-3 w-[260px] translate-y-2 rounded-[22px] border border-[#2a2023] bg-[#0c0b0d] px-4 py-4 opacity-0 shadow-[0_18px_50px_rgba(0,0,0,0.46),0_0_35px_rgba(255,183,197,0.08)] transition duration-150 ease-out invisible group-hover/comment-profile:visible group-hover/comment-profile:translate-y-0 group-hover/comment-profile:opacity-100 group-focus-within/comment-profile:visible group-focus-within/comment-profile:translate-y-0 group-focus-within/comment-profile:opacity-100`}>
         <span className="absolute left-1/2 top-0 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rotate-45 border-l border-t border-[#2a2023] bg-[#0c0b0d]" />
         <span className="flex items-start gap-3">
-          {mentionProfile.photoURL ? (
+          {previewProfile.photoURL ? (
             <AvatarMedia
-              src={mentionProfile.photoURL}
+              src={previewProfile.photoURL}
               alt={mentionPreviewAlt}
               loading="lazy"
               decoding="async"
@@ -1463,7 +1469,7 @@ export default function ProfilePage() {
           )}
           <span className="min-w-0 flex-1">
             <a
-              href={typeof mentionProfile.profileId === "number" ? profilePath(mentionProfile.profileId) : "#"}
+              href={typeof previewProfile.profileId === "number" ? profilePath(previewProfile.profileId) : "#"}
               style={roleCommentAuthorStyle(mentionProfileRole)}
               className="block truncate text-sm font-black uppercase tracking-[0.03em] transition hover:brightness-125 hover:text-white"
             >
@@ -1478,9 +1484,9 @@ export default function ProfilePage() {
                   {renderRoleBadgeText(mentionPreviewBadgeRole)}
                 </span>
               </span>
-              {typeof mentionProfile.profileId === "number" ? (
+              {typeof previewProfile.profileId === "number" ? (
                 <span className="shrink-0 text-[10px] font-mono uppercase tracking-[0.14em] text-gray-500">
-                  ID: {mentionProfile.profileId}
+                  ID: {previewProfile.profileId}
                 </span>
               ) : null}
             </span>
@@ -1596,7 +1602,7 @@ export default function ProfilePage() {
         parts.push(
           <span
             key={`${mentionKey}:${matchIndex}`}
-            className="group/mention relative inline-flex max-w-full align-baseline"
+            className="group/comment-profile relative inline-flex max-w-full align-baseline"
           >
             <a
               href={profilePath(mentionProfile.profileId)}
@@ -1605,7 +1611,7 @@ export default function ProfilePage() {
             >
               {mentionDisplayText}
             </a>
-            {renderMentionProfilePreview(mentionProfile, mentionText)}
+            {renderProfileHoverPreview(mentionProfile, mentionText)}
           </span>
         );
       } else {
@@ -3261,6 +3267,7 @@ export default function ProfilePage() {
                       const showEditAction = canEditComment(comment);
                       const showDeleteAction = canDeleteComment(comment);
                       const commentInitials = initialsFromText(comment.authorName);
+                      const resolvedCommentAuthorProfile = resolveCommentAuthorProfile(comment);
                       const resolvedCommentAuthorRole = resolveCommentAuthorRole(comment);
                       const resolvedCommentAuthorPhotoURL = resolveCommentAuthorPhotoURL(comment);
                       const commentAuthorStyle = roleCommentAuthorStyle(resolvedCommentAuthorRole);
@@ -3268,7 +3275,7 @@ export default function ProfilePage() {
 
                       return <div key={comment.id} className="rounded-[24px] border border-[#1d1d1d] bg-[#090909] px-4 py-4">
                         <div className="flex items-start justify-between gap-3">
-                          <div className="flex min-w-0 items-start gap-3">
+                          <div className="group/comment-profile relative flex min-w-0 items-start gap-3">
                             {resolvedCommentAuthorPhotoURL ? <AvatarMedia src={resolvedCommentAuthorPhotoURL} alt={comment.authorName} loading="lazy" decoding="async" className="h-11 w-11 shrink-0 rounded-2xl border border-[#2a2022] object-cover shadow-[0_0_18px_rgba(255,183,197,0.1)]" /> : <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[#2a2022] bg-[#1a1012] text-[11px] font-black uppercase text-[#ffb7c5] shadow-[0_0_18px_rgba(255,183,197,0.08)]">{commentInitials}</div>}
                             <div className="min-w-0">
                               <div className="flex min-w-0 items-center gap-2">
@@ -3277,6 +3284,7 @@ export default function ProfilePage() {
                               </div>
                               <p className="mt-1 text-xs text-gray-500">{formatTime(comment.createdAt)}</p>
                             </div>
+                            {resolvedCommentAuthorProfile ? renderProfileHoverPreview(resolvedCommentAuthorProfile, comment.authorName, "start") : null}
                           </div>
                           <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
                             {showEditAction && !isEditingComment ? <button type="button" onClick={() => handleCommentEditStart(comment)} disabled={isDeletingComment || isCommentUpdating} className="inline-flex items-center justify-center rounded-full border border-[#3a2a31] bg-[#140d11] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-[#ffb7c5] transition hover:border-[#ffb7c5]/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-60">Edit</button> : null}
