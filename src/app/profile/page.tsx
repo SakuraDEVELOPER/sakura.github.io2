@@ -1064,8 +1064,10 @@ export default function ProfilePage() {
   const [profileThemeCurrentTime, setProfileThemeCurrentTime] = useState(0);
   const [profileThemeDuration, setProfileThemeDuration] = useState(0);
   const [profileThemeVolume, setProfileThemeVolume] = useState(0.34);
+  const [isProfileThemePanelOpen, setIsProfileThemePanelOpen] = useState(false);
   const commentTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const profileThemeAudioRef = useRef<HTMLAudioElement | null>(null);
+  const profileThemeAutoplayAttemptedRef = useRef<string | null>(null);
   const editingCommentTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const commentMediaInputRef = useRef<HTMLInputElement | null>(null);
   const editingCommentMediaInputRef = useRef<HTMLInputElement | null>(null);
@@ -1259,13 +1261,23 @@ export default function ProfilePage() {
     isOwner && visibleCurrentUser?.uid === activeProfile?.uid
       ? visibleCurrentUser?.presence ?? activeProfile?.presence ?? null
       : activeProfile?.presence ?? null;
+  const profileThemeProfileId =
+    typeof activeProfile?.profileId === "number" ? activeProfile.profileId : null;
   const profileThemeSongSrc =
-    typeof activeProfile?.profileId === "number"
-      ? PROFILE_THEME_SONG_BY_PROFILE_ID.get(activeProfile.profileId) ?? null
+    typeof profileThemeProfileId === "number"
+      ? PROFILE_THEME_SONG_BY_PROFILE_ID.get(profileThemeProfileId) ?? null
       : null;
   const profileThemeTitle =
-    typeof activeProfile?.profileId === "number"
-      ? PROFILE_THEME_TITLE_BY_PROFILE_ID.get(activeProfile.profileId) ?? "Profile Theme"
+    typeof profileThemeProfileId === "number"
+      ? profileThemeProfileId === 2
+        ? "Face forever young"
+        : profileThemeProfileId === 3
+          ? "Cyberpunk"
+          : "Pixies - Where Is My Mind"
+      : null;
+  const profileThemeSongKey =
+    profileThemeProfileId && profileThemeSongSrc
+      ? `${profileThemeProfileId}:${profileThemeSongSrc}`
       : null;
   const shouldPlayProfileThemeSong = Boolean(profileThemeSongSrc);
 
@@ -1277,7 +1289,6 @@ export default function ProfilePage() {
     }
 
     audio.loop = true;
-    audio.volume = profileThemeVolume;
 
     if (!shouldPlayProfileThemeSong) {
       audio.pause();
@@ -1285,39 +1296,36 @@ export default function ProfilePage() {
       setProfileThemeIsPlaying(false);
       setProfileThemeCurrentTime(0);
       setProfileThemeDuration(0);
+      setIsProfileThemePanelOpen(false);
+      profileThemeAutoplayAttemptedRef.current = null;
       return;
     }
+    audio.volume = profileThemeVolume;
 
-    let disposed = false;
-
-    const attemptPlay = () => {
-      if (disposed) {
-        return;
-      }
-
+    if (profileThemeAutoplayAttemptedRef.current !== profileThemeSongKey) {
+      profileThemeAutoplayAttemptedRef.current = profileThemeSongKey;
       void audio.play().catch(() => {
       });
-    };
-
-    const handleUserActivation = () => {
-      attemptPlay();
-    };
-
-    attemptPlay();
-    window.addEventListener("pointerdown", handleUserActivation);
-    window.addEventListener("keydown", handleUserActivation);
+    }
 
     return () => {
-      disposed = true;
-      window.removeEventListener("pointerdown", handleUserActivation);
-      window.removeEventListener("keydown", handleUserActivation);
       audio.pause();
       audio.currentTime = 0;
       setProfileThemeIsPlaying(false);
       setProfileThemeCurrentTime(0);
       setProfileThemeDuration(0);
     };
-  }, [profileThemeSongSrc, profileThemeVolume, shouldPlayProfileThemeSong]);
+  }, [profileThemeSongKey, profileThemeSongSrc, shouldPlayProfileThemeSong]);
+
+  useEffect(() => {
+    const audio = profileThemeAudioRef.current;
+
+    if (!audio) {
+      return;
+    }
+
+    audio.volume = profileThemeVolume;
+  }, [profileThemeVolume]);
 
   useEffect(() => {
     const audio = profileThemeAudioRef.current;
@@ -3912,57 +3920,73 @@ export default function ProfilePage() {
       {activeProfile ? (
         <>
           {shouldPlayProfileThemeSong ? (
-            <div className="fixed bottom-6 left-6 z-40 w-[min(92vw,320px)] rounded-[24px] border border-[#2a171c] bg-[radial-gradient(circle_at_top_left,rgba(255,183,197,0.12),transparent_62%),rgba(9,9,9,0.96)] px-4 py-4 shadow-[0_0_40px_rgba(255,183,197,0.12)] backdrop-blur-sm">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="font-mono text-[10px] uppercase tracking-[0.32em] text-[#ffb7c5]">Profile Theme</p>
-                  <p className="mt-2 truncate text-sm font-semibold text-white">
-                    {profileThemeTitle ?? "Profile Theme"}
-                  </p>
+            <div className="fixed bottom-6 left-6 z-40 flex flex-col items-start gap-3">
+              {isProfileThemePanelOpen ? (
+                <div className="w-[min(88vw,280px)] rounded-[22px] border border-[#2a171c] bg-[radial-gradient(circle_at_top_left,rgba(255,183,197,0.12),transparent_62%),rgba(9,9,9,0.96)] px-4 py-4 shadow-[0_0_34px_rgba(255,183,197,0.12)] backdrop-blur-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-mono text-[10px] uppercase tracking-[0.32em] text-[#ffb7c5]">Profile Theme</p>
+                      <p className="mt-2 truncate text-sm font-semibold text-white">
+                        {profileThemeTitle ?? "Profile Theme"}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void handleProfileThemeToggle();
+                      }}
+                      className="inline-flex h-10 min-w-10 shrink-0 items-center justify-center rounded-full border border-[#ffb7c5]/35 bg-[linear-gradient(180deg,#241118_0%,#140d11_100%)] px-3 text-[11px] font-bold uppercase tracking-[0.12em] text-[#ffb7c5] shadow-[0_0_18px_rgba(255,183,197,0.16)] transition hover:border-[#ffb7c5]/60 hover:text-white"
+                    >
+                      {profileThemeIsPlaying ? "Pause" : "Play"}
+                    </button>
+                  </div>
+                  <div className="mt-3">
+                    <input
+                      type="range"
+                      min={0}
+                      max={profileThemeDuration > 0 ? profileThemeDuration : 0}
+                      step={0.1}
+                      value={Math.min(profileThemeCurrentTime, profileThemeDuration || profileThemeCurrentTime)}
+                      onChange={handleProfileThemeSeek}
+                      disabled={profileThemeDuration <= 0}
+                      className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-[#211317] accent-[#ffb7c5] disabled:cursor-not-allowed disabled:opacity-40"
+                    />
+                    <div className="mt-2 flex items-center justify-between text-[10px] font-medium text-gray-400">
+                      <span>{formatAudioClock(profileThemeCurrentTime)}</span>
+                      <span>{formatAudioClock(profileThemeDuration)}</span>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex items-center gap-3">
+                    <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-[#ffb7c5]">
+                      Vol
+                    </span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={profileThemeVolume}
+                      onChange={handleProfileThemeVolumeChange}
+                      className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-[#211317] accent-[#ffb7c5]"
+                    />
+                    <span className="w-9 text-right text-[10px] font-medium text-gray-400">
+                      {Math.round(profileThemeVolume * 100)}%
+                    </span>
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    void handleProfileThemeToggle();
-                  }}
-                  className="inline-flex shrink-0 items-center justify-center rounded-full border border-[#ffb7c5]/30 bg-[#140d11] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-[#ffb7c5] transition hover:border-[#ffb7c5]/50 hover:text-white"
-                >
-                  {profileThemeIsPlaying ? "Pause" : "Play"}
-                </button>
-              </div>
-              <div className="mt-4">
-                <input
-                  type="range"
-                  min={0}
-                  max={profileThemeDuration > 0 ? profileThemeDuration : 0}
-                  step={0.1}
-                  value={Math.min(profileThemeCurrentTime, profileThemeDuration || profileThemeCurrentTime)}
-                  onChange={handleProfileThemeSeek}
-                  disabled={profileThemeDuration <= 0}
-                  className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-[#211317] accent-[#ffb7c5] disabled:cursor-not-allowed disabled:opacity-40"
-                />
-                <div className="mt-2 flex items-center justify-between text-[11px] font-medium text-gray-400">
-                  <span>{formatAudioClock(profileThemeCurrentTime)}</span>
-                  <span>{formatAudioClock(profileThemeDuration)}</span>
-                </div>
-              </div>
-              <div className="mt-4 flex items-center gap-3">
-                <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-[#ffb7c5]">
-                  Volume
-                </span>
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={profileThemeVolume}
-                  onChange={handleProfileThemeVolumeChange}
-                  className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-[#211317] accent-[#ffb7c5]"
-                />
-                <span className="w-10 text-right text-[11px] font-medium text-gray-400">
-                  {Math.round(profileThemeVolume * 100)}%
-                </span>
-              </div>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => setIsProfileThemePanelOpen((currentValue) => !currentValue)}
+                aria-expanded={isProfileThemePanelOpen}
+                className={`inline-flex items-center justify-center rounded-full border px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] shadow-[0_0_24px_rgba(255,183,197,0.12)] transition ${
+                  isProfileThemePanelOpen
+                    ? "border-[#ffb7c5]/45 bg-[#ffb7c5] text-black hover:bg-[#ffc8d3]"
+                    : "border-[#ffb7c5]/35 bg-[#140d11] text-[#ffb7c5] hover:border-[#ffb7c5]/60 hover:text-white"
+                }`}
+              >
+                Music
+              </button>
             </div>
           ) : null}
           <div className="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-3">
