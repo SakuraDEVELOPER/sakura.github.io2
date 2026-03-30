@@ -99,7 +99,7 @@ const AUTH_STATE_SETTLED_EVENT = "sakura-auth-state-settled";
 const USER_UPDATE_EVENT = "sakura-user-update";
 const PROFILE_PATH_STORAGE_KEY = "sakura-profile-path";
 const CURRENT_PROFILE_ID_STORAGE_KEY = "sakura-current-profile-id";
-const PROFILE_BUILD_MARKER = "role-colors-v48";
+const PROFILE_BUILD_MARKER = "role-colors-v49";
 const repoBasePath = "/sakura.github.io";
 const COMMENT_MEDIA_FILE_ACCEPT = ".png,.jpg,.jpeg,.webp,.gif";
 const PRESENCE_ACTIVE_WINDOW_MS = 5 * 60 * 1000;
@@ -2179,7 +2179,7 @@ export default function ProfilePage() {
         {hasHydrated && authReady && !authError && !isProfileLoading && !activeProfile && profileError ? <section className="rounded-[32px] border border-[#201517] bg-[#0d0d0d] px-8 py-12 shadow-[0_0_60px_rgba(255,183,197,0.06)]"><p className="font-mono text-[10px] uppercase tracking-[0.4em] text-[#ffb7c5]">{requestedProfileId ? "Profile Missing" : "Guest State"}</p><p className="mt-4 text-sm leading-relaxed text-gray-400">{profileError}</p></section> : null}
 
         {activeProfile ? (
-          <section className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,57.5fr)_minmax(0,42.5fr)] lg:items-start">
+          <section className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,64fr)_minmax(0,36fr)] lg:items-start">
             <div className="w-full self-start overflow-hidden rounded-[34px] border border-[#201517] bg-[#0d0d0d] shadow-[0_0_80px_rgba(255,183,197,0.06)]">
               <div className="border-b border-[#1b1b1b] bg-[radial-gradient(circle_at_top,rgba(255,183,197,0.16),transparent_55%)] px-8 py-8">
                 <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
@@ -2196,7 +2196,7 @@ export default function ProfilePage() {
                   </div>
                 </div>
               </div>
-              <div className="grid gap-4 px-8 py-8 sm:grid-cols-2">
+              <div className="grid gap-3 px-8 py-6 md:grid-cols-2 xl:grid-cols-4">
                 {[
                   ["Profile ID", String(activeProfile.profileId ?? "Not assigned")],
                   ["Profile Name", primaryName],
@@ -2206,7 +2206,7 @@ export default function ProfilePage() {
                   <div
                     key={label}
                     style={metaCardStyle}
-                    className="rounded-[26px] border p-5 backdrop-blur-sm"
+                    className="min-w-0 rounded-[26px] border p-4 backdrop-blur-sm"
                   >
                     <p
                       style={metaLabelStyle}
@@ -2214,14 +2214,14 @@ export default function ProfilePage() {
                     >
                       {label}
                     </p>
-                    <div className="mt-4">
+                    <div className="mt-3">
                       <span
                         style={metaValuePillStyle}
-                        className="inline-flex max-w-full items-center rounded-full border px-4 py-2.5"
+                        className="inline-flex max-w-full items-center rounded-full border px-4 py-2"
                       >
                         <span
                           style={metaValueStyle}
-                          className="break-words text-[14px] leading-none sm:text-[15px]"
+                          className="truncate text-[12px] leading-none sm:text-[13px]"
                         >
                           {value}
                         </span>
@@ -2230,18 +2230,18 @@ export default function ProfilePage() {
                   </div>
                 ))}
               </div>
-              <div className="px-8 pb-8">
+              <div className="px-8 pb-7">
                 <div className="rounded-[26px] border border-[#2f161d] bg-[radial-gradient(circle_at_top_left,rgba(255,183,197,0.1),transparent_58%),linear-gradient(180deg,#0c0a0b_0%,#090909_100%)] p-5 shadow-[0_0_26px_rgba(255,143,177,0.08)]">
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-[#ffb7c5]">Subscription</p>
-                      <p className="mt-3 text-sm leading-relaxed text-gray-400">Subscription Pricing</p>
+                      <p className="mt-2 text-sm leading-relaxed text-gray-400">Subscription Pricing</p>
                     </div>
                     <span style={{ ...subscriptionBadgeStyle, ...roleBadgeTextStyle }} className="inline-flex shrink-0 rounded-full border px-3 py-1 text-[10px] font-bold">
                       {subscriptionSummary.status}
                     </span>
                   </div>
-                  <div className="mt-5 rounded-[22px] border border-[#24171b] bg-[radial-gradient(circle_at_top_left,rgba(255,183,197,0.08),transparent_62%),#090909] p-4">
+                  <div className="mt-4 rounded-[22px] border border-[#24171b] bg-[radial-gradient(circle_at_top_left,rgba(255,183,197,0.08),transparent_62%),#090909] p-4">
                     <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-[#b78a95]">Current Subscription</p>
                     <p className="mt-3 text-lg font-bold text-white">{subscriptionSummary.title}</p>
                     <p className="mt-3 text-xs leading-relaxed text-gray-400">{subscriptionSummary.description}</p>
