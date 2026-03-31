@@ -1543,6 +1543,7 @@
 
     return url.toString();
   };
+  const buildSupabaseRpcUrl = (functionName) => SUPABASE_REST_URL + "/rpc/" + functionName;
 
   const fetchSupabaseRows = async (table, query = {}) => {
     if (!SUPABASE_PUBLIC_READS_ENABLED) {
@@ -1717,6 +1718,69 @@
           : null,
       providerIds: normalizeProviderIdsList(fields.providerIds),
     };
+  };
+  const loadPrivateProfileFieldsFromSupabaseRpc = async (profileId) => {
+    if (!SUPABASE_PUBLIC_READS_ENABLED || !Number.isInteger(profileId) || profileId <= 0) {
+      return null;
+    }
+
+    const accessToken = await getSupabaseBridgeAccessToken();
+
+    if (!accessToken) {
+      return null;
+    }
+
+    try {
+      const response = await fetch(buildSupabaseRpcUrl("get_private_profile_fields_rpc"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: SUPABASE_PUBLIC_ANON_KEY,
+          Authorization: "Bearer " + accessToken,
+          "Accept-Profile": "public",
+          "Content-Profile": "public",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          target_profile_id: profileId,
+        }),
+      });
+
+      if (!response.ok) {
+        return null;
+      }
+
+      const payload = await response.json().catch(() => null);
+
+      if (!payload || typeof payload !== "object") {
+        return null;
+      }
+
+      return {
+        email:
+          typeof payload.email === "string" && payload.email.trim()
+            ? payload.email.trim()
+            : null,
+        emailVerified:
+          typeof payload.emailVerified === "boolean" ? payload.emailVerified : null,
+        verificationRequired:
+          typeof payload.verificationRequired === "boolean"
+            ? payload.verificationRequired
+            : null,
+        providerIds: normalizeProviderIdsList(payload.providerIds),
+      };
+    } catch (error) {
+      return null;
+    }
+  };
+  const loadPrivateProfileFields = async (user, profileId) => {
+    const rpcFields = await loadPrivateProfileFieldsFromSupabaseRpc(profileId);
+
+    if (rpcFields) {
+      return rpcFields;
+    }
+
+    return await loadPrivateProfileFieldsFromSupabaseSync(user, profileId);
   };
 
   const syncSupabaseProfileRecord = async (user, snapshot) => {
@@ -2853,7 +2917,7 @@
       }
 
       try {
-        const privateFields = await loadPrivateProfileFieldsFromSupabaseSync(
+        const privateFields = await loadPrivateProfileFields(
           auth.currentUser,
           profileId
         );
@@ -4982,7 +5046,7 @@
         throw createFirebaseError("profile/invalid-id", "Profile id must be a positive number.");
       }
 
-      return await loadPrivateProfileFieldsFromSupabaseSync(user, profileId);
+      return await loadPrivateProfileFields(user, profileId);
     };
 
     const updateProfileRoles = async (profileId, nextRoles) => {
