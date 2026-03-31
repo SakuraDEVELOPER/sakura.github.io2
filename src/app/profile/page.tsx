@@ -1849,7 +1849,13 @@ export default function ProfilePage() {
     writeCachedProfileComments(activeProfile.profileId, comments);
   }, [activeProfile?.profileId, comments]);
 
-  const applyUpdatedProfileSnapshot = (snapshot: UserProfile | null) => {
+  const applyUpdatedProfileSnapshot = (
+    snapshot: UserProfile | null,
+    options: {
+      targetProfileId?: number | null;
+      updateCurrentUser?: boolean;
+    } = {}
+  ) => {
     if (!snapshot) {
       return;
     }
@@ -1862,6 +1868,11 @@ export default function ProfilePage() {
       typeof snapshot.profileId === "number" && snapshot.profileId > 0
         ? snapshot.profileId
         : null;
+    const targetProfileId =
+      typeof options.targetProfileId === "number" && options.targetProfileId > 0
+        ? options.targetProfileId
+        : null;
+    const shouldUpdateCurrentUser = options.updateCurrentUser !== false;
     const matchesSnapshot = (profile: UserProfile | null | undefined) =>
       Boolean(
         profile &&
@@ -1871,11 +1882,11 @@ export default function ProfilePage() {
           )
       );
 
-    if (matchesSnapshot(activeProfile)) {
+    if (targetProfileId !== null ? snapshotProfileId === targetProfileId : matchesSnapshot(activeProfile)) {
       setProfile(snapshot);
     }
 
-    if (matchesSnapshot(visibleCurrentUser)) {
+    if (shouldUpdateCurrentUser && matchesSnapshot(visibleCurrentUser)) {
       setCurrentUser(snapshot);
     }
 
@@ -3377,7 +3388,10 @@ export default function ProfilePage() {
         });
       }
 
-      applyUpdatedProfileSnapshot(snapshot);
+      applyUpdatedProfileSnapshot(snapshot, {
+        targetProfileId: !isOwner ? activeProfile?.profileId ?? null : null,
+        updateCurrentUser: isOwner,
+      });
       setAvatarSuccess(isOwner ? "Avatar saved." : "Avatar updated.");
     } catch (error) {
       if (uploadedAvatar && shouldCleanupUploadedMedia(uploadedAvatar)) {
@@ -3409,7 +3423,10 @@ export default function ProfilePage() {
         );
       }
 
-      applyUpdatedProfileSnapshot(snapshot);
+      applyUpdatedProfileSnapshot(snapshot, {
+        targetProfileId: !isOwner ? activeProfile?.profileId ?? null : null,
+        updateCurrentUser: isOwner,
+      });
       setAvatarSuccess("Avatar deleted.");
 
       if (activeProfile?.avatarPath) {
@@ -3466,12 +3483,10 @@ export default function ProfilePage() {
         normalizedDraftRoles
       );
 
-      if (snapshot) {
-        setProfile(snapshot);
-        if (visibleCurrentUser?.uid === snapshot.uid) {
-          setCurrentUser(snapshot);
-        }
-      }
+      applyUpdatedProfileSnapshot(snapshot, {
+        targetProfileId: activeProfile.profileId,
+        updateCurrentUser: isAdminSelfTarget,
+      });
 
       setRolesSuccess("Roles updated.");
     } catch (error) {
@@ -3537,7 +3552,10 @@ export default function ProfilePage() {
         snapshot = await bridge.adminUpdateProfileDisplayName(activeProfile.profileId, nextDisplayName);
       }
 
-      applyUpdatedProfileSnapshot(snapshot);
+      applyUpdatedProfileSnapshot(snapshot, {
+        targetProfileId: !isOwner ? activeProfile?.profileId ?? null : null,
+        updateCurrentUser: isOwner,
+      });
       setDisplayNameSuccess(isOwner ? "Profile name saved." : "Profile name updated.");
     } catch (error) {
       setDisplayNameError(error instanceof Error ? error.message : "Could not save profile name.");
@@ -3580,7 +3598,10 @@ export default function ProfilePage() {
         snapshot = await bridge.adminUpdateProfileLogin(activeProfile.profileId, nextUsername);
       }
 
-      applyUpdatedProfileSnapshot(snapshot);
+      applyUpdatedProfileSnapshot(snapshot, {
+        targetProfileId: !isOwner ? activeProfile?.profileId ?? null : null,
+        updateCurrentUser: isOwner,
+      });
       if (snapshot?.login) {
         setUsernameInput(snapshot.login);
       }
@@ -3618,7 +3639,14 @@ export default function ProfilePage() {
     try {
       const snapshot = await bridge.adminSetProfileBan(activeProfile.profileId, !isTargetBanned);
 
-      applyUpdatedProfileSnapshot(snapshot);
+      if (!snapshot || snapshot.profileId !== activeProfile.profileId) {
+        throw new Error("Could not refresh the target profile after updating the ban status.");
+      }
+
+      applyUpdatedProfileSnapshot(snapshot, {
+        targetProfileId: activeProfile.profileId,
+        updateCurrentUser: isAdminSelfTarget,
+      });
       setBanSuccess(isTargetBanned ? "Account unbanned." : "Account banned.");
     } catch (error) {
       setBanError(error instanceof Error ? error.message : "Could not update the ban status.");
@@ -3643,7 +3671,10 @@ export default function ProfilePage() {
         isTargetVerificationLocked
       );
 
-      applyUpdatedProfileSnapshot(snapshot);
+      applyUpdatedProfileSnapshot(snapshot, {
+        targetProfileId: activeProfile.profileId,
+        updateCurrentUser: isAdminSelfTarget,
+      });
       setAdminPrivateProfileFields((currentFields) => ({
         email:
           currentFields?.email ??

@@ -2332,6 +2332,70 @@
       })
     );
   };
+  const mapSupabaseRpcProfilePayloadToSnapshot = (payload) => {
+    if (!payload || typeof payload !== "object") {
+      return null;
+    }
+
+    const uid =
+      typeof payload.firebaseUid === "string" && payload.firebaseUid
+        ? payload.firebaseUid
+        : typeof payload.authUserId === "string" && payload.authUserId
+          ? payload.authUserId
+          : null;
+
+    if (!uid) {
+      return null;
+    }
+
+    return cacheResolvedProfileSnapshot(
+      toStoredUserSnapshot(uid, {
+        email:
+          typeof payload.email === "string" && payload.email.trim() ? payload.email.trim() : null,
+        emailVerified:
+          typeof payload.emailVerified === "boolean" ? payload.emailVerified : null,
+        login:
+          typeof payload.login === "string" && payload.login.trim() ? payload.login.trim() : null,
+        displayName:
+          typeof payload.displayName === "string" && payload.displayName.trim()
+            ? payload.displayName.trim()
+            : null,
+        profileId: normalizeSupabaseInteger(payload.profileId),
+        photoURL:
+          typeof payload.photoURL === "string" && payload.photoURL ? payload.photoURL : null,
+        avatarPath:
+          typeof payload.avatarPath === "string" && payload.avatarPath ? payload.avatarPath : null,
+        avatarType:
+          typeof payload.avatarType === "string" && payload.avatarType ? payload.avatarType : null,
+        avatarSize: normalizeSupabaseInteger(payload.avatarSize),
+        roles: normalizeSupabaseTextArray(payload.roles),
+        isBanned: payload.isBanned === true,
+        bannedAt:
+          hasOwn(payload, "bannedAt") && typeof payload.bannedAt === "string" && payload.bannedAt
+            ? payload.bannedAt
+            : null,
+        verificationRequired:
+          typeof payload.verificationRequired === "boolean"
+            ? payload.verificationRequired
+            : null,
+        providerIds: normalizeProviderIdsList(payload.providerIds),
+        creationTime:
+          typeof payload.creationTime === "string" && payload.creationTime
+            ? payload.creationTime
+            : null,
+        lastSignInTime:
+          typeof payload.lastSignInTime === "string" && payload.lastSignInTime
+            ? payload.lastSignInTime
+            : null,
+        loginHistory: Array.isArray(payload.loginHistory) ? payload.loginHistory : [],
+        visitHistory: normalizeVisitHistory(payload.visitHistory),
+        presence:
+          payload.presence && typeof payload.presence === "object"
+            ? normalizePresence(payload.presence, window.location.pathname)
+            : normalizePresence(null, window.location.pathname),
+      })
+    );
+  };
 
   const fetchSupabaseProfileRowsByLoginPrefix = async (loginPrefix) => {
     const rows = await fetchSupabaseRows("public_profiles", {
@@ -5669,6 +5733,12 @@
           }
         }
 
+        const mappedSnapshot = mapSupabaseRpcProfilePayloadToSnapshot(supabaseResponse);
+
+        if (mappedSnapshot) {
+          return mappedSnapshot;
+        }
+
         const refreshedSnapshot = await getProfileById(profileId).catch(() => null);
 
         if (refreshedSnapshot) {
@@ -5756,6 +5826,12 @@
           }
         }
 
+        const mappedSnapshot = mapSupabaseRpcProfilePayloadToSnapshot(supabaseResponse);
+
+        if (mappedSnapshot) {
+          return mappedSnapshot;
+        }
+
         const refreshedSnapshot = await getProfileById(profileId).catch(() => null);
 
         if (refreshedSnapshot) {
@@ -5839,6 +5915,12 @@
           if (currentSnapshot) {
             return currentSnapshot;
           }
+        }
+
+        const mappedSnapshot = mapSupabaseRpcProfilePayloadToSnapshot(supabaseResponse);
+
+        if (mappedSnapshot) {
+          return mappedSnapshot;
         }
 
         const refreshedSnapshot = await getProfileById(profileId).catch(() => null);
@@ -5948,6 +6030,12 @@
           }
         }
 
+        const mappedSnapshot = mapSupabaseRpcProfilePayloadToSnapshot(supabaseResponse);
+
+        if (mappedSnapshot) {
+          return mappedSnapshot;
+        }
+
         const refreshedSnapshot = await getProfileById(profileId).catch(() => null);
 
         if (refreshedSnapshot) {
@@ -6049,6 +6137,16 @@
 
             return nextSnapshot;
           }
+        }
+
+        const mappedSnapshot = mapSupabaseRpcProfilePayloadToSnapshot({
+          ...supabaseResponse,
+          isBanned: responseIsBanned,
+          bannedAt: responseBannedAt,
+        });
+
+        if (mappedSnapshot) {
+          return mappedSnapshot;
         }
 
         const refreshedSnapshot = await getProfileById(profileId).catch(() => null);
@@ -6214,6 +6312,15 @@
               roles: responseRoles,
             };
           }
+        }
+
+        const mappedSnapshot = mapSupabaseRpcProfilePayloadToSnapshot({
+          ...supabaseResponse,
+          roles: responseRoles,
+        });
+
+        if (mappedSnapshot) {
+          return mappedSnapshot;
         }
 
         const refreshedSnapshot = await getProfileById(profileId).catch(() => null);
