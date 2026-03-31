@@ -115,6 +115,7 @@
   const SUPABASE_PROVIDER_REFRESH_TOKEN_STORAGE_KEY =
     "sakura-supabase-provider-refresh-token";
   const SUPABASE_PROVIDER_ID_STORAGE_KEY = "sakura-supabase-provider-id";
+  const PROFILE_CACHE_KEY_PREFIX = "sakura-profile-cache-v1:";
   const AVATAR_CONTENT_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "video/mp4", "video/webm"]);
   const LOGIN_PATTERN = /^[A-Za-z\u0400-\u04FF0-9._-]+$/;
   const profileByIdRuntimeCache = new Map();
@@ -2352,7 +2353,35 @@
       String(normalizedProfileId)
     );
 
-    return cachedProfile.hit ? cachedProfile.value : null;
+    if (cachedProfile.hit) {
+      return cachedProfile.value;
+    }
+
+    try {
+      const persistedRawProfile = window.localStorage.getItem(
+        PROFILE_CACHE_KEY_PREFIX + normalizedProfileId
+      );
+
+      if (!persistedRawProfile) {
+        return null;
+      }
+
+      const persistedProfile = JSON.parse(persistedRawProfile);
+
+      if (
+        !persistedProfile ||
+        typeof persistedProfile !== "object" ||
+        typeof persistedProfile.uid !== "string" ||
+        !persistedProfile.uid ||
+        normalizeSupabaseInteger(persistedProfile.profileId) !== normalizedProfileId
+      ) {
+        return null;
+      }
+
+      return persistedProfile;
+    } catch (_error) {
+      return null;
+    }
   };
   const mapSupabaseRpcProfilePayloadToSnapshot = (payload, options = {}) => {
     if (!payload || typeof payload !== "object") {
