@@ -1576,6 +1576,63 @@
     }
   };
 
+  const requestSupabaseSyncAction = async (user, action, payload = {}) => {
+    if (!SUPABASE_LIVE_SYNC_ACTIVE || !SUPABASE_SYNC_FUNCTION_URL) {
+      throw createFirebaseError(
+        "supabase-sync/unavailable",
+        "Supabase live sync is not configured for this build."
+      );
+    }
+
+    const idToken = await getSupabaseSyncToken(user);
+
+    if (!idToken) {
+      throw createFirebaseError(
+        "auth/no-current-user",
+        "Sign in again before syncing with Supabase."
+      );
+    }
+
+    const response = await fetch(SUPABASE_SYNC_FUNCTION_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + idToken,
+      },
+      body: JSON.stringify({
+        action,
+        ...payload,
+      }),
+    });
+
+    const responseBody = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      const message =
+        typeof responseBody?.error === "string" && responseBody.error
+          ? responseBody.error
+          : "Supabase live sync request failed.";
+      throw createFirebaseError("supabase-sync/request-failed", message);
+    }
+
+    return responseBody;
+  };
+  const requestSupabaseSyncActionOrThrow = async (
+    user,
+    action,
+    payload = {},
+    errorCode = "supabase-sync/request-failed",
+    fallbackMessage = "Supabase live sync request failed."
+  ) => {
+    try {
+      return await requestSupabaseSyncAction(user, action, payload);
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message ? error.message : fallbackMessage;
+      throw createFirebaseError(errorCode, message);
+    }
+  };
+
   const syncSupabaseProfileRecord = async (user, snapshot) => {
     if (
       !snapshot ||
@@ -1699,6 +1756,82 @@
     return postSupabaseSyncAction(user, "delete_comment", {
       commentId: commentId.trim(),
     });
+  };
+
+  const canViewPrivateProfileFields = (actorSnapshot, targetProfileId) =>
+    Boolean(
+      actorSnapshot &&
+        !actorSnapshot.isAnonymous &&
+        (
+          actorSnapshot.profileId === targetProfileId ||
+          canManageRoles(actorSnapshot.roles ?? [])
+        )
+    );
+
+  const enrichProfileSnapshotWithPrivateFields = async (profileId, snapshot) => {
+    if (!snapshot || snapshot.isAnonymous || !Number.isInteger(profileId) || profileId <= 0) {
+      return snapshot;
+    }
+
+    await waitForAuthStateSettlement();
+
+    let actorSnapshot = window.sakuraCurrentUserSnapshot;
+
+    if (
+      auth.currentUser &&
+      !auth.currentUser.isAnonymous &&
+      (!actorSnapshot || actorSnapshot.isAnonymous || actorSnapshot.uid !== auth.currentUser.uid)
+    ) {
+      try {
+        actorSnapshot = await resolveUserSnapshot(auth.currentUser);
+      } catch (error) {
+      }
+    }
+
+    if (!canViewPrivateProfileFields(actorSnapshot, profileId)) {
+      return snapshot;
+    }
+
+    try {
+      const privateProfileDoc = await findUserByProfileId(profileId);
+
+      if (!privateProfileDoc) {
+        return snapshot;
+      }
+
+      const privateProfileData = privateProfileDoc.data() ?? {};
+
+      return toStoredUserSnapshot(privateProfileDoc.id, {
+        ...privateProfileData,
+        ...stripNullishFields(snapshot),
+        email:
+          snapshot.email ??
+          (typeof privateProfileData.email === "string" ? privateProfileData.email : null),
+        emailVerified:
+          typeof snapshot.emailVerified === "boolean"
+            ? snapshot.emailVerified
+            : privateProfileData.emailVerified,
+        verificationRequired:
+          typeof snapshot.verificationRequired === "boolean"
+            ? snapshot.verificationRequired
+            : privateProfileData.verificationRequired,
+        providerIds:
+          Array.isArray(snapshot.providerIds) && snapshot.providerIds.length
+            ? snapshot.providerIds
+            : privateProfileData.providerIds,
+        loginHistory:
+          Array.isArray(snapshot.loginHistory) && snapshot.loginHistory.length
+            ? snapshot.loginHistory
+            : privateProfileData.loginHistory,
+        visitHistory:
+          Array.isArray(snapshot.visitHistory) && snapshot.visitHistory.length
+            ? snapshot.visitHistory
+            : privateProfileData.visitHistory,
+        presence: snapshot.presence ?? privateProfileData.presence ?? null,
+      });
+    } catch (error) {
+      return snapshot;
+    }
   };
 
   const mapSupabasePresenceRow = (row) =>
@@ -2590,6 +2723,131 @@
         })
       );
     };
+    const deleteProfileCommentDocumentsForAccount = async (user, snapshot) => {
+      const commentRefsById = new Map();
+      const commentLookups = [];
+
+      if (typeof snapshot?.profileId === "number" && snapshot.profileId > 0) {
+        commentLookups.push(
+          getDocs(query(profileCommentsCollection, where("profileId", "==", snapshot.profileId)))
+        );
+      }
+
+      if (typeof user?.uid === "string" && user.uid) {
+        commentLookups.push(
+          getDocs(query(profileCommentsCollection, where("authorUid", "==", user.uid)))
+        );
+      }
+
+      const commentSnapshots = await Promise.all(commentLookups);
+
+      commentSnapshots.forEach((commentSnapshot) => {
+        commentSnapshot.forEach((commentDoc) => {
+          if (!commentRefsById.has(commentDoc.id)) {
+            commentRefsById.set(commentDoc.id, commentDoc.ref);
+          }
+        });
+      });
+
+      await Promise.all(
+        [...commentRefsById.values()].map((commentRef) => deleteDoc(commentRef))
+      );
+
+      return commentRefsById.size;
+    };
+    const resetProfileCountAfterDeletion = async () => {
+      const usersSnapshot = await getDocs(usersCollection);
+      let maxProfileId = 0;
+
+      usersSnapshot.forEach((userDoc) => {
+        const candidateProfileId = normalizeSupabaseInteger(userDoc.data()?.profileId);
+
+        if (candidateProfileId && candidateProfileId > maxProfileId) {
+          maxProfileId = candidateProfileId;
+        }
+      });
+
+      await setDoc(
+        countersRef,
+        {
+          profileCount: maxProfileId,
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+
+      return maxProfileId;
+    };
+    const clearProfileLookupCaches = () => {
+      profileByIdRuntimeCache.clear();
+      profileByAuthorRuntimeCache.clear();
+      profilesByPrefixRuntimeCache.clear();
+      runtimePendingLookupCache.clear();
+    };
+    const deleteCurrentAccount = async () => {
+      const user = auth.currentUser;
+
+      if (!user || user.isAnonymous) {
+        throw createFirebaseError(
+          "auth/no-current-user",
+          "Sign in again before deleting the account."
+        );
+      }
+
+      const snapshot =
+        window.sakuraCurrentUserSnapshot &&
+        !window.sakuraCurrentUserSnapshot.isAnonymous &&
+        window.sakuraCurrentUserSnapshot.uid === user.uid
+          ? window.sakuraCurrentUserSnapshot
+          : await resolveUserSnapshot(user);
+
+      if (!snapshot || snapshot.isAnonymous) {
+        throw createFirebaseError(
+          "auth/no-current-user",
+          "Sign in again before deleting the account."
+        );
+      }
+
+      stopPresenceTracking();
+
+      try {
+        await deleteProfileCommentDocumentsForAccount(user, snapshot);
+        await deleteAvatarFromStorage(user.uid).catch((error) => {
+          console.error("Failed to delete account avatar from Firebase Storage:", error);
+        });
+        await deleteDoc(userRefFor(user.uid));
+        await resetProfileCountAfterDeletion();
+      } catch (error) {
+        const message =
+          error instanceof Error && error.message
+            ? error.message
+            : "Account data could not be deleted from Firebase.";
+        throw createFirebaseError("account/delete-firestore-failed", message);
+      }
+
+      await requestSupabaseSyncActionOrThrow(
+        user,
+        "delete_profile_account_data",
+        {},
+        "account/delete-sync-failed",
+        "Account data could not be deleted from Supabase."
+      );
+
+      clearProfileLookupCaches();
+
+      try {
+        await signOutSupabaseBridge();
+      } catch (error) {
+      }
+
+      try {
+        await signOut(auth);
+      } catch (error) {
+      }
+
+      publishUserSnapshot(null);
+      return null;
+    };
 
     const toAnonymousViewerSnapshot = (user) => ({
       uid: user.uid,
@@ -3257,10 +3515,10 @@
       );
 
       if (cachedProfileSnapshot.hit) {
-        return cachedProfileSnapshot.value;
+        return await enrichProfileSnapshotWithPrivateFields(profileId, cachedProfileSnapshot.value);
       }
 
-      return runCachedLookup(
+      const resolvedProfileSnapshot = await runCachedLookup(
         profileByIdRuntimeCache,
         String(profileId),
         PROFILE_RUNTIME_CACHE_TTL_MS,
@@ -3341,6 +3599,8 @@
           );
         }
       );
+
+      return await enrichProfileSnapshotWithPrivateFields(profileId, resolvedProfileSnapshot);
     };
 
     const getProfileByAuthorName = async (authorName) => {
@@ -4823,6 +5083,7 @@
 
         return syncPresence(user, options);
       },
+      deleteAccount: async () => deleteCurrentAccount(),
       logout: async () => {
         stopPresenceTracking();
         await signOutSupabaseBridge();

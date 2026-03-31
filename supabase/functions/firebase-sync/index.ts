@@ -1,4 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { cert, getApps, initializeApp } from "npm:firebase-admin/app";
+import { getAuth as getFirebaseAdminAuthBase } from "npm:firebase-admin/auth";
 import { createRemoteJWKSet, jwtVerify } from "npm:jose@6";
 
 const corsHeaders = {
@@ -10,6 +12,12 @@ const corsHeaders = {
 const firebaseProjectId = Deno.env.get("FIREBASE_PROJECT_ID") ?? "";
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
 const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const firebaseServiceAccountJson = Deno.env.get("FIREBASE_SERVICE_ACCOUNT_JSON") ?? "";
+const firebaseServiceAccountEmail = Deno.env.get("FIREBASE_SERVICE_ACCOUNT_EMAIL") ?? "";
+const firebaseServiceAccountPrivateKey = (
+  Deno.env.get("FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY") ?? ""
+).replace(/\\n/g, "\n");
+const supabaseStorageBucket = Deno.env.get("SUPABASE_STORAGE_BUCKET") ?? "comment-media";
 
 if (!firebaseProjectId || !supabaseUrl || !supabaseServiceRoleKey) {
   throw new Error(
@@ -36,6 +44,7 @@ type ActorProfile = {
   authUserId: string | null;
   email: string | null;
   displayName: string | null;
+  avatarPath: string | null;
 };
 
 const nowIso = () => new Date().toISOString();
@@ -71,6 +80,52 @@ const normalizePassword = (value: unknown) =>
   typeof value === "string" && value.length >= 6 && value.length <= 1024
     ? value
     : null;
+
+const parseFirebaseServiceAccount = () => {
+  if (firebaseServiceAccountJson) {
+    const parsed = JSON.parse(firebaseServiceAccountJson) as Record<string, unknown>;
+
+    return {
+      projectId:
+        normalizeString(parsed.project_id, 200) ??
+        normalizeString(parsed.projectId, 200),
+      clientEmail:
+        normalizeString(parsed.client_email, 320) ??
+        normalizeString(parsed.clientEmail, 320),
+      privateKey:
+        normalizeString(parsed.private_key, 8192) ??
+        normalizeString(parsed.privateKey, 8192),
+    };
+  }
+
+  return {
+    projectId: null,
+    clientEmail: normalizeString(firebaseServiceAccountEmail, 320),
+    privateKey: normalizeString(firebaseServiceAccountPrivateKey, 8192),
+  };
+};
+
+const getFirebaseAdminAuth = () => {
+  const serviceAccount = parseFirebaseServiceAccount();
+
+  if (!serviceAccount.clientEmail || !serviceAccount.privateKey) {
+    throw new Error(
+      "Firebase admin service account is required for account deletion. Set FIREBASE_SERVICE_ACCOUNT_JSON or FIREBASE_SERVICE_ACCOUNT_EMAIL and FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY.",
+    );
+  }
+
+  if (!getApps().length) {
+    initializeApp({
+      credential: cert({
+        projectId: serviceAccount.projectId ?? undefined,
+        clientEmail: serviceAccount.clientEmail,
+        privateKey: serviceAccount.privateKey,
+      }),
+    });
+  }
+
+  return getFirebaseAdminAuthBase();
+};
 
 const normalizeIsoString = (value: unknown) => {
   if (typeof value !== "string" || !value.trim()) {
@@ -161,6 +216,7 @@ const loadActorProfile = async (firebaseUid: string): Promise<ActorProfile> => {
     authUserId: normalizeString(data?.auth_user_id, 128),
     email: normalizeString(data?.email, 320),
     displayName: normalizeString(data?.display_name, 96),
+    avatarPath: normalizeStorageObjectPath(data?.avatar_path),
   };
 };
 
@@ -178,6 +234,76 @@ const isAlreadyRegisteredError = (error: unknown) =>
 
 const isMissingAuthUserError = (error: unknown) =>
   /user not found|not found/i.test(getErrorMessage(error));
+
+const chunkArray = <T>(items: T[], size: number) => {
+  const chunks: T[][] = [];
+
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+
+  return chunks;
+};
+
+const deleteSupabaseStoragePaths = async (paths: string[]) => {
+  const normalizedPaths = [...new Set(
+    paths
+      .map((path) => normalizeStorageObjectPath(path))
+      .filter((path): path is string => Boolean(path))
+  )];
+
+  if (!normalizedPaths.length) {
+    return;
+  }
+
+  for (const batch of chunkArray(normalizedPaths, 100)) {
+    const { error } = await supabaseAdmin.storage
+      .from(supabaseStorageBucket)
+      .remove(batch);
+
+    if (error) {
+      throw error;
+    }
+  }
+};
+
+const findSupabaseAuthUserIdByEmail = async (email: string) => {
+  const normalizedEmail = email.trim().toLowerCase();
+
+  if (!normalizedEmail) {
+    return null;
+  }
+
+  const perPage = 200;
+
+  for (let page = 1; page <= 20; page += 1) {
+    const { data, error } = await supabaseAdmin.auth.admin.listUsers({
+      page,
+      perPage,
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    const users = Array.isArray(data.users) ? data.users : [];
+    const matchedUser = users.find(
+      (user) =>
+        typeof user.email === "string" &&
+        user.email.trim().toLowerCase() === normalizedEmail,
+    );
+
+    if (matchedUser?.id) {
+      return matchedUser.id;
+    }
+
+    if (users.length < perPage) {
+      break;
+    }
+  }
+
+  return null;
+};
 
 const authorizeStorageObjectPath = async (
   firebaseUid: string,
@@ -404,6 +530,88 @@ const handleEnsureSupabasePasswordUser = async (
     linked: Boolean(authUserId && actorProfile.profileId && actorProfile.profileId > 0),
     authUserId,
     existing: !created && !updated,
+  });
+};
+
+const handleDeleteProfileAccountData = async (
+  actor: { uid: string; email: string | null },
+) => {
+  const actorProfile = await loadActorProfile(actor.uid);
+  const profileId = actorProfile.profileId;
+  const mediaPaths = new Set<string>();
+
+  if (actorProfile.avatarPath) {
+    mediaPaths.add(actorProfile.avatarPath);
+  }
+
+  if (profileId && profileId > 0) {
+    const { data: commentRows, error: commentRowsError } = await supabaseAdmin
+      .from("profile_comments")
+      .select("id,media_path")
+      .or(`profile_id.eq.${profileId},author_profile_id.eq.${profileId}`);
+
+    if (commentRowsError) {
+      throw commentRowsError;
+    }
+
+    for (const row of Array.isArray(commentRows) ? commentRows : []) {
+      const mediaPath = normalizeStorageObjectPath(row?.media_path);
+
+      if (mediaPath) {
+        mediaPaths.add(mediaPath);
+      }
+    }
+
+    const { error: deleteCommentsError } = await supabaseAdmin
+      .from("profile_comments")
+      .delete()
+      .or(`profile_id.eq.${profileId},author_profile_id.eq.${profileId}`);
+
+    if (deleteCommentsError) {
+      throw deleteCommentsError;
+    }
+
+    const { error: deleteProfileError } = await supabaseAdmin
+      .from("profiles")
+      .delete()
+      .eq("profile_id", profileId);
+
+    if (deleteProfileError) {
+      throw deleteProfileError;
+    }
+  }
+
+  await deleteSupabaseStoragePaths([...mediaPaths]);
+
+  const supabaseAuthUserId =
+    actorProfile.authUserId ??
+    (actorProfile.email ? await findSupabaseAuthUserIdByEmail(actorProfile.email) : null) ??
+    (actor.email ? await findSupabaseAuthUserIdByEmail(actor.email) : null);
+
+  if (supabaseAuthUserId) {
+    const { error: deleteSupabaseAuthError } = await supabaseAdmin.auth.admin.deleteUser(
+      supabaseAuthUserId,
+    );
+
+    if (deleteSupabaseAuthError && !isMissingAuthUserError(deleteSupabaseAuthError)) {
+      throw deleteSupabaseAuthError;
+    }
+  }
+
+  try {
+    await getFirebaseAdminAuth().deleteUser(actor.uid);
+  } catch (error) {
+    if (!isMissingAuthUserError(error)) {
+      throw error;
+    }
+  }
+
+  return json({
+    ok: true,
+    action: "delete_profile_account_data",
+    profileId,
+    deletedSupabaseAuthUserId: supabaseAuthUserId,
+    deletedFirebaseUid: actor.uid,
   });
 };
 
@@ -645,6 +853,8 @@ Deno.serve(async (request) => {
         return await handleProfileUpsert(actor.uid, body);
       case "ensure_supabase_password_user":
         return await handleEnsureSupabasePasswordUser(actor, body);
+      case "delete_profile_account_data":
+        return await handleDeleteProfileAccountData(actor);
       case "upsert_presence":
         return await handlePresenceUpsert(actor.uid, body);
       case "upsert_comment":

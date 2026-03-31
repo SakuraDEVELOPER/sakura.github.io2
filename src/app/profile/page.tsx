@@ -116,6 +116,7 @@ type Bridge = {
     file: File | AvatarUploadPayload
   ) => Promise<UserProfile | null>;
   adminDeleteProfileAvatar: (profileId: number) => Promise<UserProfile | null>;
+  deleteAccount: () => Promise<null>;
   syncPresence: (options?: { path?: string; source?: string; forceVisit?: boolean }) => Promise<UserProfile | null>;
   getSiteOnlineCount: () => Promise<number>;
   getSiteOnlineUsers: () => Promise<
@@ -269,6 +270,18 @@ const getProfileActionErrorMessage = (error: unknown, fallback: string) => {
 
   if (code === "auth/current-password-invalid") {
     return "Current password is incorrect.";
+  }
+
+  if (code === "account/delete-firestore-failed") {
+    return "Account data could not be fully removed from Firebase. Try again in a moment.";
+  }
+
+  if (code === "account/delete-sync-failed") {
+    return "The account was cleared locally, but Supabase cleanup did not finish. Try again once more.";
+  }
+
+  if (code === "auth/no-current-user") {
+    return "Sign in again before deleting the account.";
   }
 
   return error instanceof Error ? error.message : fallback;
@@ -1132,6 +1145,8 @@ export default function ProfilePage() {
   const [isAdminVerificationSaving, setIsAdminVerificationSaving] = useState(false);
   const [adminVerificationError, setAdminVerificationError] = useState<string | null>(null);
   const [adminVerificationSuccess, setAdminVerificationSuccess] = useState<string | null>(null);
+  const [isAccountDeleting, setIsAccountDeleting] = useState(false);
+  const [accountDeleteError, setAccountDeleteError] = useState<string | null>(null);
   const [comments, setComments] = useState<ProfileComment[]>(bootstrap.comments);
   const [commentAuthorProfiles, setCommentAuthorProfiles] = useState<Record<number, UserProfile>>({});
   const [commentAuthorProfilesByCommentId, setCommentAuthorProfilesByCommentId] = useState<Record<string, UserProfile>>({});
@@ -1584,13 +1599,21 @@ export default function ProfilePage() {
               description: "This account is currently on the free tier. Future subscription upgrades and perks can be shown in this block.",
             };
   const subscriptionBadgeStyle = roleBadgeStyle(subscriptionSummary.badgeRole);
+  const targetEmail =
+    activeProfile?.email ?? (isOwner ? visibleCurrentUser?.email ?? null : null);
+  const targetProviderIds =
+    activeProfile?.providerIds?.length
+      ? activeProfile.providerIds
+      : isOwner
+        ? visibleCurrentUser?.providerIds ?? []
+        : [];
   const shouldShowVerificationBanner = Boolean(
     isOwner &&
       !activeProfile?.isBanned &&
-      activeProfile?.email &&
-      !activeProfile.providerIds.includes("google.com") &&
-      activeProfile.emailVerified === false &&
-      activeProfile.verificationRequired !== false
+      targetEmail &&
+      !targetProviderIds.includes("google.com") &&
+      activeProfile?.emailVerified === false &&
+      activeProfile?.verificationRequired !== false
   );
   const canManageRoleAssignments = Boolean(visibleCurrentUser && canManageRoles(visibleCurrentUser.roles));
   const actorIsRootManager = hasRoleInSelection(visibleCurrentUser?.roles ?? [], "root");
@@ -1605,13 +1628,13 @@ export default function ProfilePage() {
     !isCoOwnerBlockedByRootTarget
   );
   const isTargetBanned = activeProfile?.isBanned === true;
-  const targetVerificationStatus = !activeProfile?.email
+  const targetVerificationStatus = !targetEmail
     ? "no-email"
-    : activeProfile.emailVerified === true
+    : activeProfile?.emailVerified === true
       ? "verified"
-      : activeProfile.emailVerified === false &&
-          activeProfile.verificationRequired !== false &&
-          !activeProfile.providerIds.includes("google.com")
+      : activeProfile?.emailVerified === false &&
+          activeProfile?.verificationRequired !== false &&
+          !targetProviderIds.includes("google.com")
         ? "locked"
         : "unknown";
   const isTargetVerificationLocked = targetVerificationStatus === "locked";
@@ -1625,6 +1648,7 @@ export default function ProfilePage() {
   useEffect(() => {
     setIsProfileControlsOpen(false);
     setUsernamePasswordInput("");
+    setAccountDeleteError(null);
   }, [activeProfile?.profileId, isOwner]);
 
   useEffect(() => {
@@ -3129,6 +3153,44 @@ export default function ProfilePage() {
       setIsLoggingOut(false);
     }
   };
+  const handleDeleteAccount = async () => {
+    const bridge = getWindowState().sakuraFirebaseAuth;
+
+    if (!bridge || !visibleCurrentUser || visibleCurrentUser.isAnonymous) {
+      setAccountDeleteError("Sign in again before deleting the account.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Delete this account permanently? The profile, comments, and avatar will be removed."
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setAccountDeleteError(null);
+    setIsAccountDeleting(true);
+
+    try {
+      await bridge.deleteAccount();
+      clearStoredProfileNavigationState();
+      setIsProfileControlsOpen(false);
+      setIsAdminPanelOpen(false);
+      setCurrentUser(null);
+      setProfile(null);
+      setComments([]);
+      setCommentAuthorProfiles({});
+      setCommentAuthorProfilesByCommentId({});
+      redirectToRepoHome();
+    } catch (error) {
+      setAccountDeleteError(
+        getProfileActionErrorMessage(error, "Could not delete the account.")
+      );
+    } finally {
+      setIsAccountDeleting(false);
+    }
+  };
 
   const handleAvatarChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0] ?? null;
@@ -4195,6 +4257,17 @@ export default function ProfilePage() {
                 </div>
               </div> : null}
 
+              {isOwner && isProfileControlsOpen && !activeProfile?.isBanned ? <div className="rounded-[32px] border border-[#4d2028] bg-[linear-gradient(180deg,#190b10_0%,#12080c_100%)] px-7 py-7 shadow-[0_0_60px_rgba(255,120,150,0.08)]">
+                <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-[#ff9aa9]">Danger Zone</p>
+                <p className="mt-3 text-sm leading-relaxed text-[#f0c7cf]">Delete the account permanently, free the email for a new registration, remove profile comments and avatar files, and safely move the profile counter back to the highest remaining profile id.</p>
+                <div className="mt-5 flex flex-wrap items-center gap-3">
+                  <button type="button" onClick={handleDeleteAccount} disabled={isAccountDeleting} className="inline-flex items-center justify-center rounded-full border border-[#ff9aa9]/40 bg-[#ff9aa9] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-black transition hover:bg-[#ffb2be] disabled:cursor-not-allowed disabled:opacity-60">
+                    {isAccountDeleting ? "Deleting..." : "Delete Account"}
+                  </button>
+                </div>
+                {accountDeleteError ? <p className="mt-3 text-xs leading-relaxed text-[#ff9aa9]">{accountDeleteError}</p> : null}
+              </div> : null}
+
               </div>
 
             </div>
@@ -4408,8 +4481,8 @@ export default function ProfilePage() {
                                   ? "Email verified"
                                   : "State unknown"}
                           </p>
-                          {activeProfile.email ? (
-                            <p className="mt-1 text-xs text-gray-500">{activeProfile.email}</p>
+                          {targetEmail ? (
+                            <p className="mt-1 text-xs text-gray-500">{targetEmail}</p>
                           ) : (
                             <p className="mt-1 text-xs text-gray-500">This account does not have a stored email.</p>
                           )}
@@ -4440,7 +4513,7 @@ export default function ProfilePage() {
                           onClick={handleAdminVerificationToggle}
                           disabled={
                             isAdminVerificationSaving ||
-                            !activeProfile.email ||
+                            !targetEmail ||
                             (isAdminSelfTarget && isTargetVerified)
                           }
                           className={`inline-flex items-center justify-center rounded-full border px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition disabled:cursor-not-allowed disabled:opacity-60 ${
