@@ -1171,6 +1171,7 @@ export default function ProfilePage() {
   const [isBanSaving, setIsBanSaving] = useState(false);
   const [banError, setBanError] = useState<string | null>(null);
   const [banSuccess, setBanSuccess] = useState<string | null>(null);
+  const [optimisticAdminBanState, setOptimisticAdminBanState] = useState<boolean | null>(null);
   const [isAdminVerificationSaving, setIsAdminVerificationSaving] = useState(false);
   const [adminVerificationError, setAdminVerificationError] = useState<string | null>(null);
   const [adminVerificationSuccess, setAdminVerificationSuccess] = useState<string | null>(null);
@@ -1757,7 +1758,8 @@ export default function ProfilePage() {
       isCancelled = true;
     };
   }, [canOpenAdminPanel, isAdminPanelOpen, profile?.profileId]);
-  const isTargetBanned = activeProfile?.isBanned === true;
+  const isTargetBanned =
+    optimisticAdminBanState !== null ? optimisticAdminBanState : activeProfile?.isBanned === true;
   const targetVerificationStatus = !targetEmail
     ? "no-email"
     : targetEmailVerified === true
@@ -1780,7 +1782,18 @@ export default function ProfilePage() {
     setUsernamePasswordInput("");
     setAdminAccountDeleteError(null);
     setAccountDeleteError(null);
+    setOptimisticAdminBanState(null);
   }, [activeProfile?.profileId, isOwner]);
+
+  useEffect(() => {
+    if (optimisticAdminBanState === null) {
+      return;
+    }
+
+    if (activeProfile?.isBanned === optimisticAdminBanState) {
+      setOptimisticAdminBanState(null);
+    }
+  }, [activeProfile?.isBanned, optimisticAdminBanState]);
 
   useEffect(() => {
     if (!authReady || !authStateSettled || !isCurrentAccountVerificationLocked) {
@@ -3635,6 +3648,7 @@ export default function ProfilePage() {
     setBanError(null);
     setBanSuccess(null);
     setIsBanSaving(true);
+    setOptimisticAdminBanState(!isTargetBanned);
 
     try {
       const snapshot = await bridge.adminSetProfileBan(activeProfile.profileId, !isTargetBanned);
@@ -3649,6 +3663,7 @@ export default function ProfilePage() {
       });
       setBanSuccess(isTargetBanned ? "Account unbanned." : "Account banned.");
     } catch (error) {
+      setOptimisticAdminBanState(null);
       setBanError(error instanceof Error ? error.message : "Could not update the ban status.");
     } finally {
       setIsBanSaving(false);

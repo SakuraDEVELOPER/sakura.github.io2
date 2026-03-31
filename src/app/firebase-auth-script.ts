@@ -96,6 +96,7 @@
   const AUTH_SIGN_OUT_TIMEOUT_MS = 4000;
   const ACCOUNT_DELETE_TIMEOUT_MS = 15000;
   const PROFILE_RUNTIME_CACHE_TTL_MS = 2 * 60 * 1000;
+  const PROFILE_FORCE_FRESH_WINDOW_MS = 45 * 1000;
   const PROFILE_SEARCH_RUNTIME_CACHE_TTL_MS = 45 * 1000;
   const ONLINE_USERS_RUNTIME_CACHE_TTL_MS = 8 * 1000;
   const PRESENCE_ONLINE_WINDOW_MS = 90 * 1000;
@@ -122,6 +123,7 @@
   const profileByAuthorRuntimeCache = new Map();
   const profilesByPrefixRuntimeCache = new Map();
   const runtimePendingLookupCache = new Map();
+  const profileForceFreshUntil = new Map();
 
   const createFirebaseError = (code, message) => {
     const error = new Error(message);
@@ -1068,6 +1070,37 @@
 
     return value;
   };
+  const markProfileForFreshFetch = (profileId, ttlMs = PROFILE_FORCE_FRESH_WINDOW_MS) => {
+    const normalizedProfileId = normalizeSupabaseInteger(profileId);
+
+    if (normalizedProfileId === null || normalizedProfileId <= 0) {
+      return;
+    }
+
+    profileForceFreshUntil.set(normalizedProfileId, Date.now() + ttlMs);
+    profileByIdRuntimeCache.delete(String(normalizedProfileId));
+    runtimePendingLookupCache.delete("profile-by-id:" + normalizedProfileId);
+  };
+  const shouldForceFreshProfileFetch = (profileId) => {
+    const normalizedProfileId = normalizeSupabaseInteger(profileId);
+
+    if (normalizedProfileId === null || normalizedProfileId <= 0) {
+      return false;
+    }
+
+    const freshUntil = profileForceFreshUntil.get(normalizedProfileId);
+
+    if (typeof freshUntil !== "number") {
+      return false;
+    }
+
+    if (freshUntil <= Date.now()) {
+      profileForceFreshUntil.delete(normalizedProfileId);
+      return false;
+    }
+
+    return true;
+  };
   const runCachedLookup = async (cache, key, ttlMs, pendingKey, loader) => {
     const cachedEntry = readRuntimeCacheEntry(cache, key);
 
@@ -1555,18 +1588,25 @@
   };
   const buildSupabaseRpcUrl = (functionName) => SUPABASE_REST_URL + "/rpc/" + functionName;
 
-  const fetchSupabaseRows = async (table, query = {}) => {
+  const fetchSupabaseRows = async (table, query = {}, options = {}) => {
     if (!SUPABASE_PUBLIC_READS_ENABLED) {
       return null;
     }
 
     try {
       const response = await fetch(buildSupabaseRestUrl(table, query), {
+        cache: options.forceFresh ? "no-store" : "default",
         headers: {
           apikey: SUPABASE_PUBLIC_ANON_KEY,
           Authorization: "Bearer " + SUPABASE_PUBLIC_ANON_KEY,
           "Accept-Profile": "public",
           Accept: "application/json",
+          ...(options.forceFresh
+            ? {
+                "Cache-Control": "no-cache, no-store, max-age=0",
+                Pragma: "no-cache",
+              }
+            : {}),
         },
       });
 
@@ -2559,12 +2599,12 @@
       : null;
   };
 
-  const fetchSupabaseProfileById = async (profileId) => {
+  const fetchSupabaseProfileById = async (profileId, options = {}) => {
     const profileRows = await fetchSupabaseRows("public_profiles", {
       select: SUPABASE_PROFILE_SELECT,
       profile_id: "eq." + profileId,
       limit: 1,
-    });
+    }, options);
 
     if (!Array.isArray(profileRows) || !profileRows[0]) {
       return null;
@@ -2574,7 +2614,7 @@
       select: SUPABASE_PROFILE_PRESENCE_SELECT,
       profile_id: "eq." + profileId,
       limit: 1,
-    });
+    }, options);
 
     return mapSupabaseProfileRowToSnapshot(
       profileRows[0],
@@ -4681,6 +4721,8 @@
         throw createFirebaseError("profile/invalid-id", "Profile id must be a positive number.");
       }
 
+      const forceFreshProfileFetch = shouldForceFreshProfileFetch(profileId);
+
       if (
         window.sakuraCurrentUserSnapshot &&
         !window.sakuraCurrentUserSnapshot.isAnonymous &&
@@ -4694,17 +4736,14 @@
         String(profileId)
       );
 
-      if (cachedProfileSnapshot.hit) {
+      if (!forceFreshProfileFetch && cachedProfileSnapshot.hit) {
         return await enrichProfileSnapshotWithPrivateFields(profileId, cachedProfileSnapshot.value);
       }
 
-      const resolvedProfileSnapshot = await runCachedLookup(
-        profileByIdRuntimeCache,
-        String(profileId),
-        PROFILE_RUNTIME_CACHE_TTL_MS,
-        "profile-by-id:" + profileId,
-        async () => {
-          const supabaseProfile = await fetchSupabaseProfileById(profileId);
+      const loadProfileById = async () => {
+          const supabaseProfile = await fetchSupabaseProfileById(profileId, {
+            forceFresh: forceFreshProfileFetch,
+          });
 
           if (supabaseProfile) {
             return supabaseProfile;
@@ -4777,8 +4816,17 @@
           return cacheResolvedProfileSnapshot(
             profileDoc ? toStoredUserSnapshot(profileDoc.id, profileDoc.data()) : null
           );
-        }
-      );
+        };
+
+      const resolvedProfileSnapshot = forceFreshProfileFetch
+        ? await loadProfileById()
+        : await runCachedLookup(
+            profileByIdRuntimeCache,
+            String(profileId),
+            PROFILE_RUNTIME_CACHE_TTL_MS,
+            "profile-by-id:" + profileId,
+            loadProfileById
+          );
 
       return await enrichProfileSnapshotWithPrivateFields(profileId, resolvedProfileSnapshot);
     };
@@ -6202,6 +6250,7 @@
       }
 
       const isBanned = Boolean(nextIsBanned);
+      markProfileForFreshFetch(profileId);
       let ensuredRootContext = null;
       const ensureRootContext = async () => {
         if (!ensuredRootContext) {
