@@ -3476,6 +3476,10 @@ export default function ProfilePage() {
 
     try {
       let snapshot: UserProfile | null = null;
+      const targetProfileId =
+        isOwner
+          ? visibleCurrentUser?.profileId ?? activeProfile?.profileId ?? null
+          : activeProfile?.profileId ?? null;
       const targetUid =
         isOwner ? visibleCurrentUser?.uid ?? activeProfile?.uid : activeProfile?.uid;
 
@@ -3492,6 +3496,24 @@ export default function ProfilePage() {
         snapshot = await withAvatarActionTimeout(
           bridge.adminUpdateProfileAvatar(activeProfile.profileId, avatarPayload)
         );
+      }
+
+      if (targetProfileId && typeof bridge.refreshProfileById === "function") {
+        const refreshedSnapshot = await bridge.refreshProfileById(targetProfileId).catch(() => null);
+
+        if (refreshedSnapshot) {
+          snapshot = refreshedSnapshot;
+        }
+      }
+
+      if (snapshot) {
+        snapshot = {
+          ...snapshot,
+          photoURL: uploadedAvatar.publicUrl,
+          avatarPath: uploadedAvatar.path,
+          avatarType: uploadedAvatar.contentType,
+          avatarSize: uploadedAvatar.size,
+        };
       }
 
       if (activeProfile?.avatarPath && activeProfile.avatarPath !== uploadedAvatar.path) {
@@ -3526,6 +3548,10 @@ export default function ProfilePage() {
     setIsAvatarDeleting(true);
     try {
       let snapshot: UserProfile | null = null;
+      const targetProfileId =
+        isOwner
+          ? visibleCurrentUser?.profileId ?? activeProfile?.profileId ?? null
+          : activeProfile?.profileId ?? null;
 
       if (isOwner) {
         snapshot = await withAvatarActionTimeout(bridge.deleteAvatar());
@@ -3533,6 +3559,24 @@ export default function ProfilePage() {
         snapshot = await withAvatarActionTimeout(
           bridge.adminDeleteProfileAvatar(activeProfile.profileId)
         );
+      }
+
+      if (targetProfileId && typeof bridge.refreshProfileById === "function") {
+        const refreshedSnapshot = await bridge.refreshProfileById(targetProfileId).catch(() => null);
+
+        if (refreshedSnapshot) {
+          snapshot = refreshedSnapshot;
+        }
+      }
+
+      if (snapshot) {
+        snapshot = {
+          ...snapshot,
+          photoURL: null,
+          avatarPath: null,
+          avatarType: null,
+          avatarSize: null,
+        };
       }
 
       applyUpdatedProfileSnapshot(snapshot, {

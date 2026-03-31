@@ -5579,6 +5579,9 @@
         delayMs: 120,
       });
       const user = auth.currentUser;
+      const targetProfileId = hasAssignedProfileId(currentSupabaseDetails)
+        ? currentSupabaseDetails.profileId
+        : null;
 
       if (!user && !hasAssignedProfileId(currentSupabaseDetails)) {
         throw createFirebaseError("auth/no-current-user", "Sign in again to update your avatar.");
@@ -5607,6 +5610,10 @@
         throw createFirebaseError("storage/invalid-file", "Choose an image before uploading.");
       }
 
+      if (targetProfileId) {
+        markProfileForFreshFetch(targetProfileId);
+      }
+
       const supabaseResponse = await callSupabaseAuthenticatedRpc(
         "update_current_profile_avatar_rpc",
         {
@@ -5619,6 +5626,10 @@
       );
 
       if (supabaseResponse) {
+        if (targetProfileId) {
+          markProfileForFreshFetch(targetProfileId);
+        }
+
         if (user && !user.isAnonymous) {
           try {
             await updateProfile(user, { photoURL: avatarUpload.photoURL });
@@ -5720,6 +5731,9 @@
         delayMs: 120,
       });
       const user = auth.currentUser;
+      const targetProfileId = hasAssignedProfileId(currentSupabaseDetails)
+        ? currentSupabaseDetails.profileId
+        : null;
 
       if (!user && !hasAssignedProfileId(currentSupabaseDetails)) {
         throw createFirebaseError("auth/no-current-user", "Sign in again to update your avatar.");
@@ -5734,6 +5748,10 @@
         );
       }
 
+      if (targetProfileId) {
+        markProfileForFreshFetch(targetProfileId);
+      }
+
       const supabaseResponse = await callSupabaseAuthenticatedRpc(
         "update_current_profile_avatar_rpc",
         {
@@ -5746,6 +5764,10 @@
       );
 
       if (supabaseResponse) {
+        if (targetProfileId) {
+          markProfileForFreshFetch(targetProfileId);
+        }
+
         if (user && !user.isAnonymous) {
           try {
             await updateProfile(user, { photoURL: null });
@@ -6048,6 +6070,8 @@
         throw createFirebaseError("storage/invalid-file", "Choose an image before uploading.");
       }
 
+      markProfileForFreshFetch(profileId);
+
       const supabaseResponse = await callSupabaseAuthenticatedRpc(
         "admin_update_profile_avatar_rpc",
         {
@@ -6061,6 +6085,8 @@
       );
 
       if (supabaseResponse) {
+        markProfileForFreshFetch(profileId);
+
         if (window.sakuraCurrentUserSnapshot?.profileId === profileId) {
           const currentSnapshot = await resolveSupabaseSessionSnapshotFallback();
 
@@ -6163,6 +6189,8 @@
         throw createFirebaseError("profile/invalid-id", "Profile id must be a positive number.");
       }
 
+      markProfileForFreshFetch(profileId);
+
       const supabaseResponse = await callSupabaseAuthenticatedRpc(
         "admin_update_profile_avatar_rpc",
         {
@@ -6176,6 +6204,8 @@
       );
 
       if (supabaseResponse) {
+        markProfileForFreshFetch(profileId);
+
         if (window.sakuraCurrentUserSnapshot?.profileId === profileId) {
           const currentSnapshot = await resolveSupabaseSessionSnapshotFallback();
 
