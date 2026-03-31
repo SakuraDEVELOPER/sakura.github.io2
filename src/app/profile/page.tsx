@@ -1646,34 +1646,6 @@ export default function ProfilePage() {
               description: "This account is currently on the free tier. Future subscription upgrades and perks can be shown in this block.",
             };
   const subscriptionBadgeStyle = roleBadgeStyle(subscriptionSummary.badgeRole);
-  const targetEmail =
-    activeProfile?.email ??
-    adminPrivateProfileFields?.email ??
-    (isOwner ? visibleCurrentUser?.email ?? null : null);
-  const targetProviderIds =
-    activeProfile?.providerIds?.length
-      ? activeProfile.providerIds
-      : adminPrivateProfileFields?.providerIds?.length
-        ? adminPrivateProfileFields.providerIds
-        : isOwner
-          ? visibleCurrentUser?.providerIds ?? []
-          : [];
-  const targetEmailVerified =
-    typeof activeProfile?.emailVerified === "boolean"
-      ? activeProfile.emailVerified
-      : adminPrivateProfileFields?.emailVerified ?? null;
-  const targetVerificationRequired =
-    typeof activeProfile?.verificationRequired === "boolean"
-      ? activeProfile.verificationRequired
-      : adminPrivateProfileFields?.verificationRequired ?? null;
-  const shouldShowVerificationBanner = Boolean(
-    isOwner &&
-      !activeProfile?.isBanned &&
-      targetEmail &&
-      !targetProviderIds.includes("google.com") &&
-      targetEmailVerified === false &&
-      targetVerificationRequired !== false
-  );
   const canManageRoleAssignments = Boolean(visibleCurrentUser && canManageRoles(visibleCurrentUser.roles));
   const actorIsRootManager = hasRoleInSelection(visibleCurrentUser?.roles ?? [], "root");
   const actorIsCoOwnerManager = hasRoleInSelection(visibleCurrentUser?.roles ?? [], "co-owner");
@@ -1685,6 +1657,40 @@ export default function ProfilePage() {
     canManageRoleAssignments &&
     activeProfile?.profileId &&
     !isCoOwnerBlockedByRootTarget
+  );
+  const shouldPreferAdminPrivateFields = Boolean(isAdminPanelOpen && canOpenAdminPanel);
+  const targetEmail =
+    (shouldPreferAdminPrivateFields ? adminPrivateProfileFields?.email ?? null : null) ??
+    activeProfile?.email ??
+    (isOwner ? visibleCurrentUser?.email ?? null : null);
+  const targetProviderIds =
+    shouldPreferAdminPrivateFields && adminPrivateProfileFields?.providerIds?.length
+      ? adminPrivateProfileFields.providerIds
+      : activeProfile?.providerIds?.length
+        ? activeProfile.providerIds
+        : isOwner
+          ? visibleCurrentUser?.providerIds ?? []
+          : [];
+  const targetEmailVerified =
+    shouldPreferAdminPrivateFields && typeof adminPrivateProfileFields?.emailVerified === "boolean"
+      ? adminPrivateProfileFields.emailVerified
+      : typeof activeProfile?.emailVerified === "boolean"
+        ? activeProfile.emailVerified
+        : adminPrivateProfileFields?.emailVerified ?? null;
+  const targetVerificationRequired =
+    shouldPreferAdminPrivateFields &&
+    typeof adminPrivateProfileFields?.verificationRequired === "boolean"
+      ? adminPrivateProfileFields.verificationRequired
+      : typeof activeProfile?.verificationRequired === "boolean"
+        ? activeProfile.verificationRequired
+        : adminPrivateProfileFields?.verificationRequired ?? null;
+  const shouldShowVerificationBanner = Boolean(
+    isOwner &&
+      !activeProfile?.isBanned &&
+      targetEmail &&
+      !targetProviderIds.includes("google.com") &&
+      targetEmailVerified === false &&
+      targetVerificationRequired !== false
   );
   useEffect(() => {
     if (typeof window === "undefined") {
