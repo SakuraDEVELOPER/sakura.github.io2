@@ -12,6 +12,11 @@ export type SupabaseAuthUserSnapshot = {
   hasSession: boolean;
 };
 
+export type SupabaseAuthResolvedUserSnapshot = SupabaseAuthUserSnapshot & {
+  emailVerified: boolean;
+  emailConfirmedAt: string | null;
+};
+
 export type SupabasePasswordSignUpResult = {
   session: Session | null;
   user: SupabaseAuthUserSnapshot | null;
@@ -27,8 +32,10 @@ type SupabaseAuthBridge = {
     login?: string | null;
     displayName?: string | null;
   }) => Promise<SupabasePasswordSignUpResult>;
+  resendVerificationEmail: (email: string) => Promise<void>;
   logout: () => Promise<void>;
   getSession: () => Promise<Session | null>;
+  getCurrentUser: () => Promise<SupabaseAuthResolvedUserSnapshot | null>;
   onAuthStateChanged: (callback: (user: SupabaseAuthUserSnapshot | null) => void) => () => void;
 };
 
@@ -203,6 +210,28 @@ const toSupabaseSnapshotFromUser = (
   };
 };
 
+const toResolvedSupabaseSnapshotFromUser = (
+  user: User | null,
+  hasSession: boolean,
+): SupabaseAuthResolvedUserSnapshot | null => {
+  const baseSnapshot = toSupabaseSnapshotFromUser(user, hasSession);
+
+  if (!baseSnapshot) {
+    return null;
+  }
+
+  return {
+    ...baseSnapshot,
+    emailVerified: Boolean(user?.email_confirmed_at || user?.confirmed_at),
+    emailConfirmedAt:
+      typeof user?.email_confirmed_at === "string" && user.email_confirmed_at
+        ? user.email_confirmed_at
+        : typeof user?.confirmed_at === "string" && user.confirmed_at
+          ? user.confirmed_at
+          : null,
+  };
+};
+
 const publishSnapshot = (snapshot: SupabaseAuthUserSnapshot | null) => {
   const runtime = getRuntimeWindow();
   runtime.sakuraSupabaseCurrentUserSnapshot = snapshot;
@@ -346,6 +375,19 @@ export const startSupabaseAuthRuntime = async () => {
           needsEmailVerification: Boolean(data.user && !session?.access_token),
         };
       },
+      resendVerificationEmail: async (email) => {
+        const { error } = await client.auth.resend({
+          type: "signup",
+          email,
+          options: {
+            emailRedirectTo: buildSupabaseRedirectTo(),
+          },
+        });
+
+        if (error) {
+          throw normalizeSupabaseAuthError(error);
+        }
+      },
       logout: async () => {
         const { error } = await client.auth.signOut();
 
@@ -361,6 +403,25 @@ export const startSupabaseAuthRuntime = async () => {
         }
 
         return publishSession(data.session ?? null);
+      },
+      getCurrentUser: async () => {
+        const { data: sessionData, error: sessionError } = await client.auth.getSession();
+
+        if (sessionError) {
+          throw sessionError;
+        }
+
+        const session = publishSession(sessionData.session ?? null);
+        const { data, error } = await client.auth.getUser();
+
+        if (error) {
+          throw normalizeSupabaseAuthError(error);
+        }
+
+        return toResolvedSupabaseSnapshotFromUser(
+          data.user ?? session?.user ?? null,
+          Boolean(session?.access_token),
+        );
       },
       onAuthStateChanged: (callback) => {
         const {

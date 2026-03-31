@@ -2754,6 +2754,45 @@
 
       return window.sakuraSupabaseCurrentSession ?? null;
     };
+    const getSupabaseBridgeCurrentUser = async () => {
+      const bridge = await ensureSupabasePasswordBridge();
+
+      if (bridge?.getCurrentUser) {
+        try {
+          return await bridge.getCurrentUser();
+        } catch (error) {
+        }
+      }
+
+      const session = await getSupabaseBridgeSession();
+      const sessionUser = session?.user ?? null;
+      const sessionProviderIds = normalizeProviderIdsList(
+        Array.isArray(window.sakuraSupabaseCurrentUserSnapshot?.providerIds)
+          ? window.sakuraSupabaseCurrentUserSnapshot.providerIds
+          : []
+      );
+
+      if (!sessionUser?.id) {
+        return null;
+      }
+
+      return {
+        id: sessionUser.id,
+        email: typeof sessionUser.email === "string" ? sessionUser.email : null,
+        providerIds: sessionProviderIds,
+        createdAt: typeof sessionUser.created_at === "string" ? sessionUser.created_at : null,
+        lastSignInAt:
+          typeof sessionUser.last_sign_in_at === "string" ? sessionUser.last_sign_in_at : null,
+        hasSession: Boolean(session?.access_token),
+        emailVerified: Boolean(sessionUser.email_confirmed_at || sessionUser.confirmed_at),
+        emailConfirmedAt:
+          typeof sessionUser.email_confirmed_at === "string" && sessionUser.email_confirmed_at
+            ? sessionUser.email_confirmed_at
+            : typeof sessionUser.confirmed_at === "string" && sessionUser.confirmed_at
+              ? sessionUser.confirmed_at
+              : null,
+      };
+    };
     const fetchFirebaseCustomTokenFromSupabase = async () => {
       if (!SUPABASE_AUTH_BRIDGE_FUNCTION_URL) {
         return null;
@@ -3020,6 +3059,58 @@
       }
 
       return allowedSnapshot;
+    };
+    const applyCurrentVerificationSnapshot = async ({
+      emailVerified,
+      verificationRequired,
+      verificationEmailSent,
+      providerIds = null,
+    }) => {
+      const normalizedProviderIds = normalizeProviderIdsList(providerIds);
+      const fallbackSnapshot = await resolveSupabaseSessionSnapshotFallback();
+
+      if (fallbackSnapshot) {
+        return publishUserSnapshot({
+          ...fallbackSnapshot,
+          emailVerified,
+          verificationRequired,
+          verificationEmailSent,
+          providerIds: normalizedProviderIds.length
+            ? normalizedProviderIds
+            : fallbackSnapshot.providerIds,
+        });
+      }
+
+      const firebaseUser = auth.currentUser;
+
+      if (firebaseUser && !firebaseUser.isAnonymous) {
+        return publishUserSnapshot(
+          toUserSnapshot(firebaseUser, {
+            ...(window.sakuraCurrentUserSnapshot ?? {}),
+            emailVerified,
+            verificationRequired,
+            verificationEmailSent,
+            providerIds:
+              normalizedProviderIds.length > 0
+                ? normalizedProviderIds
+                : window.sakuraCurrentUserSnapshot?.providerIds ?? getProviderIds(firebaseUser),
+          })
+        );
+      }
+
+      if (window.sakuraCurrentUserSnapshot?.uid) {
+        return publishUserSnapshot({
+          ...window.sakuraCurrentUserSnapshot,
+          emailVerified,
+          verificationRequired,
+          verificationEmailSent,
+          providerIds: normalizedProviderIds.length
+            ? normalizedProviderIds
+            : window.sakuraCurrentUserSnapshot.providerIds,
+        });
+      }
+
+      return null;
     };
     const clearBrokenProfileSession = async (message) => {
       stopPresenceTracking();
@@ -6173,31 +6264,39 @@
     };
 
     const resendVerificationEmail = async () => {
-      const user = auth.currentUser;
+      const user = auth.currentUser && !auth.currentUser.isAnonymous ? auth.currentUser : null;
+      const currentSupabaseDetails = await loadCurrentAuthProfileFromSupabaseRpcWithRetry({
+        attempts: 2,
+        delayMs: 120,
+      });
+      const currentSnapshot = window.sakuraCurrentUserSnapshot;
+      const currentRoles = normalizeRoles(
+        currentSnapshot?.roles ?? currentSupabaseDetails?.roles ?? []
+      );
+      const currentProviderIds = normalizeProviderIdsList(
+        currentSnapshot?.providerIds ??
+          currentSupabaseDetails?.providerIds ??
+          (user ? getProviderIds(user) : [])
+      );
 
-      if (!user || user.isAnonymous) {
+      if (!user && !currentSnapshot?.uid && !hasAssignedProfileId(currentSupabaseDetails)) {
         throw createFirebaseError("auth/no-current-user", "Sign in again to verify your email.");
       }
-
-      const currentRoles = normalizeRoles(window.sakuraCurrentUserSnapshot?.roles ?? []);
-      const currentProviderIds = normalizeProviderIdsList(
-        window.sakuraCurrentUserSnapshot?.providerIds ?? getProviderIds(user)
-      );
 
       if (
         !requiresEmailVerification(currentRoles) ||
         hasTrustedEmailProvider(currentProviderIds)
       ) {
-        const snapshot = publishUserSnapshot(
-          toUserSnapshot(user, {
-            ...(window.sakuraCurrentUserSnapshot ?? {}),
-            roles: currentRoles,
-            emailVerified: true,
-            verificationRequired: false,
-            verificationEmailSent: false,
-            providerIds: currentProviderIds,
-          })
-        );
+        const snapshot = await applyCurrentVerificationSnapshot({
+          emailVerified: true,
+          verificationRequired: false,
+          verificationEmailSent: false,
+          providerIds: currentProviderIds,
+        });
+
+        if (!snapshot) {
+          return null;
+        }
 
         return {
           ...snapshot,
@@ -6205,14 +6304,22 @@
         };
       }
 
-      if (user.emailVerified) {
-        const snapshot = publishUserSnapshot(
-          toUserSnapshot(user, {
-            ...(window.sakuraCurrentUserSnapshot ?? {}),
-            emailVerified: true,
-            verificationEmailSent: false,
-          })
-        );
+      const currentSupabaseUser = await getSupabaseBridgeCurrentUser();
+
+      if (currentSupabaseUser?.emailVerified || user?.emailVerified) {
+        const snapshot = await applyCurrentVerificationSnapshot({
+          emailVerified: true,
+          verificationRequired: false,
+          verificationEmailSent: false,
+          providerIds:
+            currentProviderIds.length > 0
+              ? currentProviderIds
+              : currentSupabaseUser?.providerIds ?? null,
+        });
+
+        if (!snapshot) {
+          return null;
+        }
 
         return {
           ...snapshot,
@@ -6220,15 +6327,44 @@
         };
       }
 
-      await sendEmailVerification(user);
+      const targetEmail =
+        currentSupabaseUser?.email ??
+        currentSupabaseDetails?.email ??
+        currentSnapshot?.email ??
+        user?.email ??
+        null;
+      let verificationEmailSent = false;
 
-      const snapshot = publishUserSnapshot(
-        toUserSnapshot(user, {
-          ...(window.sakuraCurrentUserSnapshot ?? {}),
-          emailVerified: false,
-          verificationEmailSent: true,
-        })
-      );
+      const supabaseBridge = await ensureSupabasePasswordBridge();
+
+      if (supabaseBridge?.resendVerificationEmail && typeof targetEmail === "string" && targetEmail) {
+        await supabaseBridge.resendVerificationEmail(targetEmail);
+        verificationEmailSent = true;
+      }
+
+      if (!verificationEmailSent && user) {
+        await sendEmailVerification(user);
+        verificationEmailSent = true;
+      }
+
+      if (!verificationEmailSent) {
+        throw createFirebaseError(
+          "auth/no-current-user",
+          "Sign in again to verify your email."
+        );
+      }
+
+      const snapshot = await applyCurrentVerificationSnapshot({
+        emailVerified: false,
+        verificationRequired: true,
+        verificationEmailSent: true,
+        providerIds:
+          currentProviderIds.length > 0 ? currentProviderIds : currentSupabaseUser?.providerIds,
+      });
+
+      if (!snapshot) {
+        return null;
+      }
 
       return {
         ...snapshot,
@@ -6236,75 +6372,73 @@
       };
     };
     const refreshVerificationStatus = async () => {
-      const user = auth.currentUser;
+      const user = auth.currentUser && !auth.currentUser.isAnonymous ? auth.currentUser : null;
+      const currentSupabaseDetails = await loadCurrentAuthProfileFromSupabaseRpcWithRetry({
+        attempts: 2,
+        delayMs: 120,
+      });
 
-      if (!user || user.isAnonymous) {
+      if (!user && !window.sakuraCurrentUserSnapshot?.uid && !hasAssignedProfileId(currentSupabaseDetails)) {
         throw createFirebaseError(
           "auth/no-current-user",
           "Sign in again to refresh email verification."
         );
       }
 
-      await reload(user);
+      if (user) {
+        await reload(user);
+      }
+
+      const currentSupabaseUser = await getSupabaseBridgeCurrentUser();
 
       const currentProviderIds = normalizeProviderIdsList(
-        window.sakuraCurrentUserSnapshot?.providerIds ?? getProviderIds(user)
+        window.sakuraCurrentUserSnapshot?.providerIds ??
+          currentSupabaseDetails?.providerIds ??
+          currentSupabaseUser?.providerIds ??
+          (user ? getProviderIds(user) : [])
       );
 
-      if (user.emailVerified || hasTrustedEmailProvider(currentProviderIds)) {
-        const supabaseSnapshot = await resolveSupabaseSessionSnapshotFallback();
+      if (
+        currentSupabaseUser?.emailVerified ||
+        user?.emailVerified ||
+        hasTrustedEmailProvider(currentProviderIds)
+      ) {
+        const snapshot = await applyCurrentVerificationSnapshot({
+          emailVerified: true,
+          verificationRequired: false,
+          verificationEmailSent: false,
+          providerIds:
+            currentProviderIds.length > 0
+              ? currentProviderIds
+              : currentSupabaseUser?.providerIds ?? null,
+        });
+        const allowedSnapshot = snapshot
+          ? await enforceActiveSessionNotBanned(snapshot)
+          : null;
 
-        if (supabaseSnapshot) {
-          const snapshot = publishUserSnapshot({
-            ...supabaseSnapshot,
-            emailVerified: true,
-            verificationRequired: false,
-            verificationEmailSent: false,
-            providerIds:
-              currentProviderIds.length > 0 ? currentProviderIds : supabaseSnapshot.providerIds,
-          });
-          const allowedSnapshot = await enforceActiveSessionNotBanned(snapshot);
-
-          return {
-            ...allowedSnapshot,
-            verificationEmailSent: false,
-          };
+        if (!allowedSnapshot) {
+          return null;
         }
+
+        return {
+          ...allowedSnapshot,
+          verificationEmailSent: false,
+        };
       }
 
-      if (hasTrustedEmailProvider(currentProviderIds)) {
-        try {
-          await setDoc(
-            userRefFor(user.uid),
-            {
-              emailVerified: true,
-              verificationRequired: false,
-              verificationEmailSent: false,
-              providerIds: currentProviderIds,
-              updatedAt: new Date().toISOString(),
-            },
-            { merge: true }
-          );
-        } catch (error) {}
+      let snapshot = await resolveSupabaseSessionSnapshotFallback();
+
+      if (!snapshot && user) {
+        snapshot = await resolveUserSnapshot(user);
       }
 
-      if (user.emailVerified || hasTrustedEmailProvider(currentProviderIds)) {
-        try {
-          await setDoc(
-            userRefFor(user.uid),
-            {
-              emailVerified: true,
-              verificationRequired: false,
-              verificationEmailSent: false,
-              updatedAt: new Date().toISOString(),
-            },
-            { merge: true }
-          );
-        } catch (error) {}
-      }
+      const allowedSnapshot = snapshot
+        ? await enforceActiveSessionNotBanned(snapshot)
+        : null;
 
-      const snapshot = await resolveUserSnapshot(user);
-      const allowedSnapshot = await enforceActiveSessionNotBanned(snapshot);
+      if (!allowedSnapshot) {
+        return null;
+      }
 
       return {
         ...allowedSnapshot,
