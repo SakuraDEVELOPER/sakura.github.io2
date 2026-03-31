@@ -1975,7 +1975,16 @@
         window.localStorage?.removeItem(SUPABASE_PROVIDER_ID_STORAGE_KEY);
       } catch (error) {}
     };
+    const clearSupabaseBridgeRuntimeState = () => {
+      try {
+        window.sakuraSupabaseCurrentSession = null;
+        window.sakuraSupabaseCurrentUserSnapshot = null;
+      } catch (error) {}
+    };
     const signOutSupabaseBridge = async () => {
+      clearStoredSupabaseProviderArtifacts();
+      clearSupabaseBridgeRuntimeState();
+
       try {
         if (!window.sakuraSupabaseAuth && typeof window.sakuraStartSupabaseAuth === "function") {
           await window.sakuraStartSupabaseAuth();
@@ -1983,12 +1992,15 @@
 
         if (window.sakuraSupabaseAuth?.logout) {
           await window.sakuraSupabaseAuth.logout();
+          clearStoredSupabaseProviderArtifacts();
+          clearSupabaseBridgeRuntimeState();
           return;
         }
       } catch (error) {
       }
 
       clearStoredSupabaseProviderArtifacts();
+      clearSupabaseBridgeRuntimeState();
     };
     const hasSupabaseGoogleProvider = () => {
       const runtimeSession = window.sakuraSupabaseCurrentSession;
