@@ -82,6 +82,13 @@ type MentionDraft = {
   query: string;
 };
 
+type PrivateProfileFields = {
+  email: string | null;
+  emailVerified: boolean | null;
+  verificationRequired: boolean | null;
+  providerIds: string[];
+};
+
 type Bridge = {
   getProfileById: (profileId: number) => Promise<UserProfile | null>;
   getProfileByAuthorName: (authorName: string) => Promise<UserProfile | null>;
@@ -108,6 +115,7 @@ type Bridge = {
   adminUpdateProfileLogin: (profileId: number, login: string) => Promise<UserProfile | null>;
   adminSetProfileBan: (profileId: number, isBanned: boolean) => Promise<UserProfile | null>;
   adminSetProfileEmailVerification: (profileId: number, isVerified: boolean) => Promise<UserProfile | null>;
+  getAdminPrivateProfileFields: (profileId: number) => Promise<PrivateProfileFields | null>;
   adminDeleteAccount: (profileId: number) => Promise<null>;
   updateProfileRoles: (profileId: number, roles: string[]) => Promise<UserProfile | null>;
   updateAvatar: (file: File | AvatarUploadPayload) => Promise<UserProfile | null>;
@@ -1166,6 +1174,7 @@ export default function ProfilePage() {
   const [isAdminVerificationSaving, setIsAdminVerificationSaving] = useState(false);
   const [adminVerificationError, setAdminVerificationError] = useState<string | null>(null);
   const [adminVerificationSuccess, setAdminVerificationSuccess] = useState<string | null>(null);
+  const [adminPrivateProfileFields, setAdminPrivateProfileFields] = useState<PrivateProfileFields | null>(null);
   const [isAdminAccountDeleting, setIsAdminAccountDeleting] = useState(false);
   const [adminAccountDeleteError, setAdminAccountDeleteError] = useState<string | null>(null);
   const [isAccountDeleting, setIsAccountDeleting] = useState(false);
@@ -1638,20 +1647,32 @@ export default function ProfilePage() {
             };
   const subscriptionBadgeStyle = roleBadgeStyle(subscriptionSummary.badgeRole);
   const targetEmail =
-    activeProfile?.email ?? (isOwner ? visibleCurrentUser?.email ?? null : null);
+    activeProfile?.email ??
+    adminPrivateProfileFields?.email ??
+    (isOwner ? visibleCurrentUser?.email ?? null : null);
   const targetProviderIds =
     activeProfile?.providerIds?.length
       ? activeProfile.providerIds
-      : isOwner
-        ? visibleCurrentUser?.providerIds ?? []
-        : [];
+      : adminPrivateProfileFields?.providerIds?.length
+        ? adminPrivateProfileFields.providerIds
+        : isOwner
+          ? visibleCurrentUser?.providerIds ?? []
+          : [];
+  const targetEmailVerified =
+    typeof activeProfile?.emailVerified === "boolean"
+      ? activeProfile.emailVerified
+      : adminPrivateProfileFields?.emailVerified ?? null;
+  const targetVerificationRequired =
+    typeof activeProfile?.verificationRequired === "boolean"
+      ? activeProfile.verificationRequired
+      : adminPrivateProfileFields?.verificationRequired ?? null;
   const shouldShowVerificationBanner = Boolean(
     isOwner &&
       !activeProfile?.isBanned &&
       targetEmail &&
       !targetProviderIds.includes("google.com") &&
-      activeProfile?.emailVerified === false &&
-      activeProfile?.verificationRequired !== false
+      targetEmailVerified === false &&
+      targetVerificationRequired !== false
   );
   const canManageRoleAssignments = Boolean(visibleCurrentUser && canManageRoles(visibleCurrentUser.roles));
   const actorIsRootManager = hasRoleInSelection(visibleCurrentUser?.roles ?? [], "root");
@@ -1665,13 +1686,78 @@ export default function ProfilePage() {
     activeProfile?.profileId &&
     !isCoOwnerBlockedByRootTarget
   );
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (!isAdminPanelOpen || !canOpenAdminPanel || !profile?.profileId) {
+      setAdminPrivateProfileFields(null);
+      return;
+    }
+
+    const bridge = getWindowState().sakuraFirebaseAuth;
+
+    if (!bridge?.getAdminPrivateProfileFields) {
+      setAdminPrivateProfileFields(null);
+      return;
+    }
+
+    let isCancelled = false;
+
+    bridge
+      .getAdminPrivateProfileFields(profile.profileId)
+      .then((fields) => {
+        if (isCancelled) {
+          return;
+        }
+
+        setAdminPrivateProfileFields(fields);
+
+        if (!fields) {
+          return;
+        }
+
+        setProfile((currentProfile) => {
+          if (!currentProfile || currentProfile.profileId !== profile.profileId) {
+            return currentProfile;
+          }
+
+          return {
+            ...currentProfile,
+            email: currentProfile.email ?? fields.email ?? null,
+            emailVerified:
+              typeof currentProfile.emailVerified === "boolean"
+                ? currentProfile.emailVerified
+                : fields.emailVerified ?? undefined,
+            verificationRequired:
+              typeof currentProfile.verificationRequired === "boolean"
+                ? currentProfile.verificationRequired
+                : fields.verificationRequired ?? undefined,
+            providerIds:
+              currentProfile.providerIds?.length
+                ? currentProfile.providerIds
+                : fields.providerIds,
+          };
+        });
+      })
+      .catch(() => {
+        if (!isCancelled) {
+          setAdminPrivateProfileFields(null);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [canOpenAdminPanel, isAdminPanelOpen, profile?.profileId]);
   const isTargetBanned = activeProfile?.isBanned === true;
   const targetVerificationStatus = !targetEmail
     ? "no-email"
-    : activeProfile?.emailVerified === true
+    : targetEmailVerified === true
       ? "verified"
-      : activeProfile?.emailVerified === false &&
-          activeProfile?.verificationRequired !== false &&
+      : targetEmailVerified === false &&
+          targetVerificationRequired !== false &&
           !targetProviderIds.includes("google.com")
         ? "locked"
         : "unknown";

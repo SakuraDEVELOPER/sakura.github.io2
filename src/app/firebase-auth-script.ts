@@ -4975,6 +4975,15 @@
         verificationEmailSent: false,
       });
     };
+    const getAdminPrivateProfileFields = async (profileId) => {
+      const { user } = await ensureRootActorSnapshot();
+
+      if (!Number.isInteger(profileId) || profileId <= 0) {
+        throw createFirebaseError("profile/invalid-id", "Profile id must be a positive number.");
+      }
+
+      return await loadPrivateProfileFieldsFromSupabaseSync(user, profileId);
+    };
 
     const updateProfileRoles = async (profileId, nextRoles) => {
       const { user, actorSnapshot } = await ensureRootActorSnapshot();
@@ -5364,6 +5373,7 @@
       adminUpdateProfileLogin,
       adminSetProfileBan,
       adminSetProfileEmailVerification,
+      getAdminPrivateProfileFields,
       adminDeleteAccount: async (profileId) => adminDeleteProfileAccount(profileId),
       getProfileById,
       getProfileByAuthorName,
