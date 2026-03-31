@@ -1770,6 +1770,14 @@ export default function Home() {
 
         </section>
 
+        <section className="px-10 pb-2">
+          <div className="mx-auto max-w-6xl">
+            <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-[#ffb7c5]">
+              Feature Showcase
+            </p>
+          </div>
+        </section>
+
         <FeatureShowcase />
 
         <TrialCta
