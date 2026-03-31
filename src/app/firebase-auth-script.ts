@@ -1773,6 +1773,38 @@
       return null;
     }
   };
+  const resolveSupabaseEmailForLogin = async (loginLower) => {
+    if (!SUPABASE_PUBLIC_READS_ENABLED || typeof loginLower !== "string" || !loginLower) {
+      return null;
+    }
+
+    try {
+      const response = await fetch(buildSupabaseRpcUrl("resolve_signin_email_for_login"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: SUPABASE_PUBLIC_ANON_KEY,
+          Authorization: "Bearer " + SUPABASE_PUBLIC_ANON_KEY,
+          "Accept-Profile": "public",
+          "Content-Profile": "public",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          target_login: loginLower,
+        }),
+      });
+
+      if (!response.ok) {
+        return null;
+      }
+
+      const payload = await response.json().catch(() => null);
+
+      return typeof payload === "string" && payload.trim() ? payload.trim() : null;
+    } catch (error) {
+      return null;
+    }
+  };
   const loadPrivateProfileFields = async (user, profileId) => {
     const rpcFields = await loadPrivateProfileFieldsFromSupabaseRpc(profileId);
 
@@ -3276,6 +3308,12 @@
 
       if (!loginLower) {
         throw createFirebaseError("auth/invalid-login", "Invalid username.");
+      }
+
+      const supabaseResolvedEmail = await resolveSupabaseEmailForLogin(loginLower);
+
+      if (supabaseResolvedEmail) {
+        return supabaseResolvedEmail;
       }
 
       const userDoc = await findUserByLogin(loginLower);

@@ -1388,12 +1388,12 @@ function HeaderAuth() {
                       ? "Choose a login and password to finish Google registration. Until then, the profile stays locked."
                       : mode === "register"
                         ? "Create a username for your profile and a separate login for sign-in."
-                        : "You can sign in with your email or login through Firebase Auth."}
+                        : "You can sign in with your email or login through Supabase Auth."}
                   </p>
                   <p className="mt-2 hidden text-sm text-gray-400">
                     {mode === "register"
                       ? "Создайте логин, чтобы он отображался в профиле и подходил для входа."
-                      : "Войти можно по email или логину через Firebase Auth."}
+                      : "Войти можно по email или логину через Supabase Auth."}
                   </p>
                 </div>
 
@@ -1437,7 +1437,7 @@ function HeaderAuth() {
 
               {!authReady && !authLoadError ? (
                 <div className="mt-5 rounded-2xl border border-[#2b1b1e] bg-[#120d0f] px-4 py-3 text-sm text-[#f2c0cb]">
-                  Подключаем Firebase Auth...
+                  Подключаем вход в аккаунт...
                 </div>
               ) : null}
 
