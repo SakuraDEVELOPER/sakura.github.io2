@@ -456,6 +456,20 @@ const redirectToLocalProfile = (requestedProfileId: number, currentProfileId: nu
   window.location.replace(profilePath(localProfileId));
   return true;
 };
+const clearStoredProfileNavigationState = () => {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.sessionStorage.removeItem(PROFILE_PATH_STORAGE_KEY);
+    window.sessionStorage.removeItem(CURRENT_PROFILE_ID_STORAGE_KEY);
+  } catch (error) {}
+};
+const redirectToRepoHome = () => {
+  if (typeof window === "undefined") return;
+
+  clearStoredProfileNavigationState();
+  window.location.replace(`${repoBasePath}/`);
+};
 const formatTime = (value: string | null) =>
   value
     ? new Intl.DateTimeFormat("ru-RU", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
@@ -1621,7 +1635,7 @@ export default function ProfilePage() {
     const bridge = getWindowState().sakuraFirebaseAuth;
 
     if (!bridge) {
-      router.replace("/");
+      redirectToRepoHome();
       return;
     }
 
@@ -1637,19 +1651,19 @@ export default function ProfilePage() {
         setCurrentUser(snapshot);
 
         if (isEmailVerificationLockedForProfile(snapshot)) {
-          router.replace("/");
+          redirectToRepoHome();
         }
       })
       .catch(() => {
         if (!isCancelled) {
-          router.replace("/");
+          redirectToRepoHome();
         }
       });
 
     return () => {
       isCancelled = true;
     };
-  }, [authReady, authStateSettled, isCurrentAccountVerificationLocked, router]);
+  }, [authReady, authStateSettled, isCurrentAccountVerificationLocked]);
 
   useEffect(() => {
     if (!hasHydrated || !shouldShowPendingState) {
@@ -3101,11 +3115,14 @@ export default function ProfilePage() {
 
   const handleLogout = async () => {
     const bridge = getWindowState().sakuraFirebaseAuth;
-    if (!bridge) return;
+    if (!bridge) {
+      redirectToRepoHome();
+      return;
+    }
     setIsLoggingOut(true);
     try {
       await bridge.logout();
-      router.push("/");
+      redirectToRepoHome();
     } finally {
       setIsLoggingOut(false);
     }
