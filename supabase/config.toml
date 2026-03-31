@@ -2,3 +2,6 @@ project_id = "dhqhubeufuorvxpvibwc"
 
 [functions.firebase-sync]
 verify_jwt = false
+
+[functions.firebase-auth-bridge]
+verify_jwt = false

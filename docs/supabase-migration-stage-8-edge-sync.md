@@ -24,6 +24,9 @@ Security model:
 Supabase function secrets required:
 
 - `FIREBASE_PROJECT_ID`
+
+Hosted Supabase Edge Functions already expose these by default, so you do **not** set them manually with `supabase secrets set`:
+
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 
@@ -32,7 +35,7 @@ Suggested deploy flow:
 1. Deploy the function:
    `supabase functions deploy firebase-sync`
 2. Set secrets:
-   `supabase secrets set FIREBASE_PROJECT_ID=sakura-bfa74 SUPABASE_SERVICE_ROLE_KEY=...`
+   `supabase secrets set FIREBASE_PROJECT_ID=sakura-bfa74`
 3. After that, enable browser-side best-effort sync with:
    `NEXT_PUBLIC_SUPABASE_LIVE_SYNC_ENABLED=true`
 4. Optionally set:

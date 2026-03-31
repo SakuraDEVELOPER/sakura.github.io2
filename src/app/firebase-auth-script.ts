@@ -27,6 +27,7 @@
           sendEmailVerification,
           signInAnonymously,
           signInWithCredential,
+          signInWithCustomToken,
           signInWithPopup,
           signInWithRedirect,
           signInWithEmailAndPassword,
@@ -1302,9 +1303,7 @@
   );
   const SUPABASE_LIVE_SYNC_ENABLED =
     ${JSON.stringify(process.env.NEXT_PUBLIC_SUPABASE_LIVE_SYNC_ENABLED ?? "")} === "true";
-  const SUPABASE_SYNC_FUNCTION_URL = (() => {
-    const explicitUrl = ${JSON.stringify(process.env.NEXT_PUBLIC_SUPABASE_SYNC_FUNCTION_URL ?? "")};
-
+  const resolveSupabaseFunctionUrl = (functionName, explicitUrl) => {
     if (explicitUrl) {
       return explicitUrl;
     }
@@ -1320,10 +1319,20 @@
         ? baseUrl.host.slice(0, baseUrl.host.length - baseSuffix.length) + ".functions.supabase.co"
         : baseUrl.host;
 
-      return baseUrl.protocol + "//" + nextHost + "/firebase-sync";
+      return baseUrl.protocol + "//" + nextHost + "/" + functionName;
     } catch (error) {
       return "";
     }
+  };
+  const SUPABASE_SYNC_FUNCTION_URL = (() => {
+    const explicitUrl = ${JSON.stringify(process.env.NEXT_PUBLIC_SUPABASE_SYNC_FUNCTION_URL ?? "")};
+    return resolveSupabaseFunctionUrl("firebase-sync", explicitUrl);
+  })();
+  const SUPABASE_AUTH_BRIDGE_FUNCTION_URL = (() => {
+    const explicitUrl = ${JSON.stringify(
+      process.env.NEXT_PUBLIC_SUPABASE_AUTH_BRIDGE_FUNCTION_URL ?? ""
+    )};
+    return resolveSupabaseFunctionUrl("firebase-auth-bridge", explicitUrl);
   })();
   const SUPABASE_LIVE_SYNC_ACTIVE = Boolean(
     SUPABASE_LIVE_SYNC_ENABLED && SUPABASE_SYNC_FUNCTION_URL
@@ -1960,6 +1969,7 @@
       );
     };
     let supabaseGoogleBridgePromise = null;
+    let supabaseSessionBridgePromise = null;
     const readStoredSupabaseValue = (key) => {
       try {
         const value = window.localStorage?.getItem(key);
@@ -2017,6 +2027,85 @@
 
       return providerId === "google";
     };
+    const getSupabaseBridgeSession = async () => {
+      try {
+        if (!window.sakuraSupabaseAuth && typeof window.sakuraStartSupabaseAuth === "function") {
+          await window.sakuraStartSupabaseAuth();
+        }
+      } catch (error) {
+      }
+
+      if (
+        window.sakuraSupabaseCurrentSession &&
+        typeof window.sakuraSupabaseCurrentSession.access_token === "string" &&
+        window.sakuraSupabaseCurrentSession.access_token
+      ) {
+        return window.sakuraSupabaseCurrentSession;
+      }
+
+      try {
+        if (window.sakuraSupabaseAuth?.getSession) {
+          return await window.sakuraSupabaseAuth.getSession();
+        }
+      } catch (error) {
+      }
+
+      return window.sakuraSupabaseCurrentSession ?? null;
+    };
+    const getSupabaseBridgeAccessToken = async () => {
+      const session = await getSupabaseBridgeSession();
+
+      return typeof session?.access_token === "string" && session.access_token
+        ? session.access_token
+        : null;
+    };
+    const fetchFirebaseCustomTokenFromSupabase = async () => {
+      if (!SUPABASE_AUTH_BRIDGE_FUNCTION_URL) {
+        return null;
+      }
+
+      const accessToken = await getSupabaseBridgeAccessToken();
+
+      if (!accessToken) {
+        return null;
+      }
+
+      try {
+        const response = await fetch(SUPABASE_AUTH_BRIDGE_FUNCTION_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + accessToken,
+          },
+          body: JSON.stringify({
+            action: "mint_firebase_custom_token",
+          }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => "");
+
+          if (response.status >= 500) {
+            console.error(
+              "Supabase auth bridge rejected Firebase custom token request:",
+              response.status,
+              errorText
+            );
+          }
+
+          return null;
+        }
+
+        const payload = await response.json().catch(() => null);
+
+        return typeof payload?.customToken === "string" && payload.customToken
+          ? payload.customToken
+          : null;
+      } catch (error) {
+        console.error("Supabase auth bridge failed:", error);
+        return null;
+      }
+    };
     const getSupabaseGoogleAccessToken = async () => {
       try {
         if (typeof window.sakuraStartSupabaseAuth === "function") {
@@ -2036,6 +2125,30 @@
           : null;
 
       return runtimeToken || readStoredSupabaseValue(SUPABASE_PROVIDER_TOKEN_STORAGE_KEY);
+    };
+    const bridgeSupabaseSessionToFirebase = async () => {
+      if (auth.currentUser && !auth.currentUser.isAnonymous) {
+        return auth.currentUser;
+      }
+
+      if (supabaseSessionBridgePromise) {
+        return supabaseSessionBridgePromise;
+      }
+
+      supabaseSessionBridgePromise = (async () => {
+        const customToken = await fetchFirebaseCustomTokenFromSupabase();
+
+        if (!customToken) {
+          return null;
+        }
+
+        const credentials = await signInWithCustomToken(auth, customToken);
+        return credentials.user ?? null;
+      })().finally(() => {
+        supabaseSessionBridgePromise = null;
+      });
+
+      return supabaseSessionBridgePromise;
     };
     const bridgeSupabaseGoogleSessionToFirebase = async () => {
       if (auth.currentUser && !auth.currentUser.isAnonymous) {
@@ -4657,7 +4770,9 @@
 
           if (!user) {
             try {
-              const bridgedUser = await bridgeSupabaseGoogleSessionToFirebase();
+              const bridgedUser =
+                (await bridgeSupabaseSessionToFirebase()) ??
+                (await bridgeSupabaseGoogleSessionToFirebase());
 
               if (bridgedUser && !bridgedUser.isAnonymous) {
                 return;
@@ -4676,7 +4791,9 @@
 
           if (user.isAnonymous) {
             try {
-              const bridgedUser = await bridgeSupabaseGoogleSessionToFirebase();
+              const bridgedUser =
+                (await bridgeSupabaseSessionToFirebase()) ??
+                (await bridgeSupabaseGoogleSessionToFirebase());
 
               if (bridgedUser && !bridgedUser.isAnonymous) {
                 return;
