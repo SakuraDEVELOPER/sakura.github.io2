@@ -3115,14 +3115,16 @@ export default function ProfilePage() {
 
   const handleLogout = async () => {
     const bridge = getWindowState().sakuraFirebaseAuth;
-    if (!bridge) {
-      redirectToRepoHome();
-      return;
-    }
     setIsLoggingOut(true);
     try {
-      await bridge.logout();
-      redirectToRepoHome();
+      clearStoredProfileNavigationState();
+      setIsProfileControlsOpen(false);
+      setIsAdminPanelOpen(false);
+      setCurrentUser(null);
+
+      if (bridge) {
+        await bridge.logout();
+      }
     } finally {
       setIsLoggingOut(false);
     }
