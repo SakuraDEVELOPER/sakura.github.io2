@@ -1758,7 +1758,7 @@ export default function Home() {
           </div>
         </nav>
 
-        <section className="flex flex-col items-center justify-center px-4 pt-20 pb-4">
+        <section className="flex flex-col items-center justify-center px-4 pt-16 pb-1">
           <m.h1
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -1768,17 +1768,6 @@ export default function Home() {
             Feel The <br /> <span className="italic text-gray-500">Sakura Power</span>
           </m.h1>
 
-        </section>
-
-        <section className="px-10 pb-2">
-          <div className="mx-auto max-w-6xl">
-            <p className="mb-4 font-mono text-[10px] uppercase tracking-[0.4em] text-[#ffb7c5]">
-              Feature Showcase
-            </p>
-            <h2 className="max-w-2xl text-4xl font-black uppercase tracking-tighter text-white">
-              Листай карточки
-            </h2>
-          </div>
         </section>
 
         <FeatureShowcase />
@@ -2348,7 +2337,7 @@ function FeatureShowcase() {
   };
 
   return (
-    <section id="feature-showcase" className="px-10 pt-8 pb-14">
+    <section id="feature-showcase" className="px-10 pt-2 pb-12">
       <div className="mx-auto max-w-6xl">
         <div className="grid items-stretch gap-6 lg:grid-cols-[0.85fr_1.15fr]">
           <m.div
