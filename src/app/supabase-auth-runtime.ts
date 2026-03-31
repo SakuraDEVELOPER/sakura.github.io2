@@ -22,6 +22,7 @@ type SupabaseAuthBridge = {
 type SupabaseRuntimeWindow = Window & {
   sakuraSupabaseAuth?: SupabaseAuthBridge;
   sakuraSupabaseCurrentUserSnapshot?: SupabaseAuthUserSnapshot | null;
+  sakuraSupabaseCurrentSession?: Session | null;
   sakuraSupabaseAuthError?: string | null;
   sakuraSupabaseAuthReady?: boolean;
 };
@@ -29,6 +30,10 @@ type SupabaseRuntimeWindow = Window & {
 const SUPABASE_AUTH_READY_EVENT = "sakura-supabase-auth-ready";
 const SUPABASE_AUTH_ERROR_EVENT = "sakura-supabase-auth-error";
 const SUPABASE_USER_UPDATE_EVENT = "sakura-supabase-user-update";
+const SUPABASE_PROVIDER_TOKEN_STORAGE_KEY = "sakura-supabase-provider-token";
+const SUPABASE_PROVIDER_REFRESH_TOKEN_STORAGE_KEY =
+  "sakura-supabase-provider-refresh-token";
+const SUPABASE_PROVIDER_ID_STORAGE_KEY = "sakura-supabase-provider-id";
 
 const getRuntimeWindow = () => window as SupabaseRuntimeWindow;
 
@@ -52,6 +57,100 @@ const normalizeProviderIds = (user: User | null) => {
     typeof user.app_metadata?.provider === "string" ? user.app_metadata.provider.trim() : "";
 
   return primaryProvider ? [primaryProvider] : [];
+};
+
+const readStoredValue = (key: string) => {
+  try {
+    const value = window.localStorage.getItem(key);
+    return typeof value === "string" && value ? value : null;
+  } catch {
+    return null;
+  }
+};
+
+const writeStoredValue = (key: string, value: string | null) => {
+  try {
+    if (value) {
+      window.localStorage.setItem(key, value);
+      return;
+    }
+
+    window.localStorage.removeItem(key);
+  } catch {}
+};
+
+const resolvePrimaryProviderId = (session: Session | null) => {
+  const user = session?.user ?? null;
+
+  if (!user) {
+    return null;
+  }
+
+  const providerIds = normalizeProviderIds(user);
+
+  if (providerIds.length) {
+    return providerIds[0] ?? null;
+  }
+
+  const provider =
+    typeof user.app_metadata?.provider === "string" ? user.app_metadata.provider.trim() : "";
+
+  return provider || null;
+};
+
+const normalizeSession = (session: Session | null) => {
+  const runtime = getRuntimeWindow();
+
+  if (!session) {
+    return null;
+  }
+
+  return {
+    ...session,
+    provider_token:
+      session.provider_token ??
+      runtime.sakuraSupabaseCurrentSession?.provider_token ??
+      readStoredValue(SUPABASE_PROVIDER_TOKEN_STORAGE_KEY),
+    provider_refresh_token:
+      session.provider_refresh_token ??
+      runtime.sakuraSupabaseCurrentSession?.provider_refresh_token ??
+      readStoredValue(SUPABASE_PROVIDER_REFRESH_TOKEN_STORAGE_KEY),
+  };
+};
+
+const persistSessionArtifacts = (session: Session | null) => {
+  if (!session?.user) {
+    writeStoredValue(SUPABASE_PROVIDER_TOKEN_STORAGE_KEY, null);
+    writeStoredValue(SUPABASE_PROVIDER_REFRESH_TOKEN_STORAGE_KEY, null);
+    writeStoredValue(SUPABASE_PROVIDER_ID_STORAGE_KEY, null);
+    return;
+  }
+
+  if (typeof session.provider_token === "string" && session.provider_token) {
+    writeStoredValue(SUPABASE_PROVIDER_TOKEN_STORAGE_KEY, session.provider_token);
+  }
+
+  if (
+    typeof session.provider_refresh_token === "string" &&
+    session.provider_refresh_token
+  ) {
+    writeStoredValue(
+      SUPABASE_PROVIDER_REFRESH_TOKEN_STORAGE_KEY,
+      session.provider_refresh_token
+    );
+  }
+
+  writeStoredValue(SUPABASE_PROVIDER_ID_STORAGE_KEY, resolvePrimaryProviderId(session));
+};
+
+const publishSession = (session: Session | null) => {
+  const runtime = getRuntimeWindow();
+  const normalizedSession = normalizeSession(session);
+
+  runtime.sakuraSupabaseCurrentSession = normalizedSession;
+  persistSessionArtifacts(normalizedSession);
+
+  return normalizedSession;
 };
 
 const toSupabaseSnapshot = (session: Session | null): SupabaseAuthUserSnapshot | null => {
@@ -137,13 +236,14 @@ export const startSupabaseAuthRuntime = async () => {
           throw error;
         }
 
-        return data.session ?? null;
+        return publishSession(data.session ?? null);
       },
       onAuthStateChanged: (callback) => {
         const {
           data: { subscription },
         } = client.auth.onAuthStateChange((_event, session) => {
-          callback(publishSnapshot(toSupabaseSnapshot(session)));
+          const nextSession = publishSession(session);
+          callback(publishSnapshot(toSupabaseSnapshot(nextSession)));
         });
 
         callback(runtime.sakuraSupabaseCurrentUserSnapshot ?? null);
@@ -161,10 +261,12 @@ export const startSupabaseAuthRuntime = async () => {
       throw error;
     }
 
-    publishSnapshot(toSupabaseSnapshot(data.session ?? null));
+    const initialSession = publishSession(data.session ?? null);
+    publishSnapshot(toSupabaseSnapshot(initialSession));
 
     client.auth.onAuthStateChange((_event, session) => {
-      publishSnapshot(toSupabaseSnapshot(session));
+      const nextSession = publishSession(session);
+      publishSnapshot(toSupabaseSnapshot(nextSession));
     });
 
     runtime.sakuraSupabaseAuthReady = true;

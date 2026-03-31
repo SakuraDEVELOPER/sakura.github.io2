@@ -26,6 +26,7 @@
           reload,
           sendEmailVerification,
           signInAnonymously,
+          signInWithCredential,
           signInWithPopup,
           signInWithRedirect,
           signInWithEmailAndPassword,
@@ -106,6 +107,10 @@
   const PRESENCE_DIRTY_EVENT = "sakura-presence-dirty";
   const CURRENT_PROFILE_ID_STORAGE_KEY = "sakura-current-profile-id";
   const AUTH_SNAPSHOT_CACHE_STORAGE_KEY = "sakura-auth-snapshot-v1";
+  const SUPABASE_PROVIDER_TOKEN_STORAGE_KEY = "sakura-supabase-provider-token";
+  const SUPABASE_PROVIDER_REFRESH_TOKEN_STORAGE_KEY =
+    "sakura-supabase-provider-refresh-token";
+  const SUPABASE_PROVIDER_ID_STORAGE_KEY = "sakura-supabase-provider-id";
   const AVATAR_CONTENT_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "video/mp4", "video/webm"]);
   const LOGIN_PATTERN = /^[A-Za-z\u0400-\u04FF0-9._-]+$/;
   const profileByIdRuntimeCache = new Map();
@@ -1911,6 +1916,99 @@
         })
       );
     };
+    let supabaseGoogleBridgePromise = null;
+    const readStoredSupabaseValue = (key) => {
+      try {
+        const value = window.localStorage?.getItem(key);
+        return typeof value === "string" && value ? value : null;
+      } catch (error) {
+        return null;
+      }
+    };
+    const clearStoredSupabaseProviderArtifacts = () => {
+      try {
+        window.localStorage?.removeItem(SUPABASE_PROVIDER_TOKEN_STORAGE_KEY);
+        window.localStorage?.removeItem(SUPABASE_PROVIDER_REFRESH_TOKEN_STORAGE_KEY);
+        window.localStorage?.removeItem(SUPABASE_PROVIDER_ID_STORAGE_KEY);
+      } catch (error) {}
+    };
+    const signOutSupabaseBridge = async () => {
+      try {
+        if (!window.sakuraSupabaseAuth && typeof window.sakuraStartSupabaseAuth === "function") {
+          await window.sakuraStartSupabaseAuth();
+        }
+
+        if (window.sakuraSupabaseAuth?.logout) {
+          await window.sakuraSupabaseAuth.logout();
+          return;
+        }
+      } catch (error) {
+      }
+
+      clearStoredSupabaseProviderArtifacts();
+    };
+    const hasSupabaseGoogleProvider = () => {
+      const runtimeSession = window.sakuraSupabaseCurrentSession;
+      const runtimeProviderId =
+        typeof runtimeSession?.user?.app_metadata?.provider === "string"
+          ? runtimeSession.user.app_metadata.provider
+          : Array.isArray(window.sakuraSupabaseCurrentUserSnapshot?.providerIds)
+            ? window.sakuraSupabaseCurrentUserSnapshot.providerIds[0] ?? null
+            : null;
+      const storedProviderId = readStoredSupabaseValue(SUPABASE_PROVIDER_ID_STORAGE_KEY);
+      const providerId = typeof runtimeProviderId === "string" && runtimeProviderId
+        ? runtimeProviderId
+        : storedProviderId;
+
+      return providerId === "google";
+    };
+    const getSupabaseGoogleAccessToken = async () => {
+      try {
+        if (typeof window.sakuraStartSupabaseAuth === "function") {
+          await window.sakuraStartSupabaseAuth();
+        }
+      } catch (error) {
+      }
+
+      if (!hasSupabaseGoogleProvider()) {
+        return null;
+      }
+
+      const runtimeToken =
+        typeof window.sakuraSupabaseCurrentSession?.provider_token === "string" &&
+        window.sakuraSupabaseCurrentSession.provider_token
+          ? window.sakuraSupabaseCurrentSession.provider_token
+          : null;
+
+      return runtimeToken || readStoredSupabaseValue(SUPABASE_PROVIDER_TOKEN_STORAGE_KEY);
+    };
+    const bridgeSupabaseGoogleSessionToFirebase = async () => {
+      if (auth.currentUser && !auth.currentUser.isAnonymous) {
+        return auth.currentUser;
+      }
+
+      if (supabaseGoogleBridgePromise) {
+        return supabaseGoogleBridgePromise;
+      }
+
+      supabaseGoogleBridgePromise = (async () => {
+        const accessToken = await getSupabaseGoogleAccessToken();
+
+        if (!accessToken) {
+          return null;
+        }
+
+        const credential = GoogleAuthProvider.credential(null, accessToken);
+        const credentials = await signInWithCredential(auth, credential);
+
+        clearStoredSupabaseProviderArtifacts();
+        return credentials.user ?? null;
+      })().finally(() => {
+        supabaseGoogleBridgePromise = null;
+      });
+
+      return supabaseGoogleBridgePromise;
+    };
     const clearBrokenProfileSession = async (message) => {
       stopPresenceTracking();
 
@@ -1922,6 +2020,8 @@
         await signOut(auth);
       } catch (error) {
       }
+
+      await signOutSupabaseBridge();
 
       return publishUserSnapshot(null);
     };
@@ -1980,6 +2080,8 @@
         await signOut(auth);
       } catch (error) {
       }
+
+      await signOutSupabaseBridge();
 
       publishUserSnapshot(null);
 
@@ -4457,6 +4559,7 @@
       logout: async () => {
         stopPresenceTracking();
         await signOut(auth);
+        await signOutSupabaseBridge();
         publishUserSnapshot(null);
       },
       onAuthStateChanged: (callback) =>
@@ -4465,11 +4568,39 @@
           markAuthStateSettled();
 
           if (!user) {
+            try {
+              const bridgedUser = await bridgeSupabaseGoogleSessionToFirebase();
+
+              if (bridgedUser && !bridgedUser.isAnonymous) {
+                return;
+              }
+            } catch (error) {
+              emitAuthError(
+                error instanceof Error
+                  ? error.message
+                  : "Google sign-in could not be completed through Supabase."
+              );
+            }
+
             callback(publishUserSnapshot(null));
             return;
           }
 
           if (user.isAnonymous) {
+            try {
+              const bridgedUser = await bridgeSupabaseGoogleSessionToFirebase();
+
+              if (bridgedUser && !bridgedUser.isAnonymous) {
+                return;
+              }
+            } catch (error) {
+              emitAuthError(
+                error instanceof Error
+                  ? error.message
+                  : "Google sign-in could not be completed through Supabase."
+              );
+            }
+
             callback(publishUserSnapshot(toAnonymousViewerSnapshot(user)));
             return;
           }

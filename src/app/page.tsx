@@ -157,6 +157,10 @@ type FirebaseAuthBridge = {
   onAuthStateChanged: (callback: (user: AuthUserSnapshot | null) => void) => () => void;
 };
 
+type SupabaseAuthBridge = {
+  loginWithGoogle: () => Promise<null>;
+};
+
 declare global {
   interface Window {
     firebaseConfig?: FirebaseClientConfig;
@@ -166,6 +170,8 @@ declare global {
     sakuraStartFirebaseAuth?: () => Promise<unknown> | unknown;
     sakuraFirebaseAuth?: FirebaseAuthBridge;
     sakuraFirebaseAuthError?: string;
+    sakuraStartSupabaseAuth?: () => Promise<unknown> | unknown;
+    sakuraSupabaseAuth?: SupabaseAuthBridge;
   }
 }
 
@@ -175,6 +181,14 @@ const requestFirebaseAuthBoot = () => {
   }
 
   void window.sakuraStartFirebaseAuth?.();
+};
+
+const requestSupabaseAuthBoot = () => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  void window.sakuraStartSupabaseAuth?.();
 };
 
 const AUTH_READY_EVENT = "sakura-auth-ready";
@@ -1163,18 +1177,30 @@ function HeaderAuth() {
 
   const handleGoogleLogin = async () => {
     requestFirebaseAuthBoot();
-
-    if (!window.sakuraFirebaseAuth) {
-      setSubmitError(
-        authLoadError ?? "Firebase Auth еще не готов. Подождите пару секунд и попробуйте снова."
-      );
-      return;
-    }
+    requestSupabaseAuthBoot();
 
     setIsGoogleSubmitting(true);
     setSubmitError(null);
 
     try {
+      try {
+        await window.sakuraStartSupabaseAuth?.();
+      } catch {}
+
+      if (window.sakuraSupabaseAuth?.loginWithGoogle) {
+        await window.sakuraSupabaseAuth.loginWithGoogle();
+        closeModal();
+        setFlashMessage("Открываем Google для входа...");
+        return;
+      }
+
+      if (!window.sakuraFirebaseAuth) {
+        setSubmitError(
+          authLoadError ?? "Firebase Auth еще не готов. Подождите пару секунд и попробуйте снова."
+        );
+        return;
+      }
+
       const snapshot = await window.sakuraFirebaseAuth.loginWithGoogle();
       if (!snapshot) {
         closeModal();
