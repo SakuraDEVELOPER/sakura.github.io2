@@ -1642,6 +1642,10 @@ export default function ProfilePage() {
       return;
     }
 
+    if (typeof snapshot.profileId === "number" && snapshot.profileId > 0) {
+      writeCachedProfileSnapshot(snapshot);
+    }
+
     const snapshotProfileId =
       typeof snapshot.profileId === "number" && snapshot.profileId > 0
         ? snapshot.profileId
@@ -1662,6 +1666,24 @@ export default function ProfilePage() {
     if (matchesSnapshot(visibleCurrentUser)) {
       setCurrentUser(snapshot);
     }
+
+    setComments((currentComments) =>
+      currentComments.map((comment) => {
+        const matchesCommentAuthor =
+          (typeof comment.authorUid === "string" && comment.authorUid === snapshot.uid) ||
+          (snapshotProfileId !== null && comment.authorProfileId === snapshotProfileId);
+
+        if (!matchesCommentAuthor) {
+          return comment;
+        }
+
+        return {
+          ...comment,
+          authorPhotoURL: snapshot.photoURL ?? null,
+          authorAccentRole: pickCommentAuthorAccentRole(snapshot.roles) ?? comment.authorAccentRole,
+        };
+      })
+    );
 
     if (snapshotProfileId !== null) {
       setCommentAuthorProfiles((currentProfiles) => ({
@@ -2379,6 +2401,13 @@ export default function ProfilePage() {
       if (cachedCommentAuthorProfileByProfileId) {
         return cachedCommentAuthorProfileByProfileId;
       }
+
+      const persistedCommentAuthorProfile =
+        readCachedProfileSnapshot<UserProfile>(comment.authorProfileId);
+
+      if (persistedCommentAuthorProfile) {
+        return persistedCommentAuthorProfile;
+      }
     }
 
     if (activeProfile && commentMatchesUser(comment, activeProfile)) {
@@ -2611,6 +2640,18 @@ export default function ProfilePage() {
         )
     )];
 
+    commentAuthorProfileIds.forEach((authorProfileId) => {
+      if (nextCommentAuthorProfiles[authorProfileId]) {
+        return;
+      }
+
+      const cachedAuthorProfile = readCachedProfileSnapshot<UserProfile>(authorProfileId);
+
+      if (cachedAuthorProfile && typeof cachedAuthorProfile.profileId === "number") {
+        nextCommentAuthorProfiles[authorProfileId] = cachedAuthorProfile;
+      }
+    });
+
     const pendingCommentAuthorProfileIds = commentAuthorProfileIds.filter(
       (authorProfileId) => !nextCommentAuthorProfiles[authorProfileId]
     );
@@ -2646,6 +2687,7 @@ export default function ProfilePage() {
           return;
         }
 
+        writeCachedProfileSnapshot(resolvedCommentAuthorProfile);
         resolvedCommentAuthorProfileMap[resolvedCommentAuthorProfile.profileId] =
           resolvedCommentAuthorProfile;
       });
@@ -2718,6 +2760,9 @@ export default function ProfilePage() {
               const resolvedCommentAuthorProfile = await bridge.getProfileByAuthorName(sampleComment.authorName);
 
               if (resolvedCommentAuthorProfile) {
+                if (typeof resolvedCommentAuthorProfile.profileId === "number") {
+                  writeCachedProfileSnapshot(resolvedCommentAuthorProfile);
+                }
                 profilesByAuthorKey.set(unresolvedAuthorName, resolvedCommentAuthorProfile);
               }
             } catch (error) {
