@@ -1670,8 +1670,10 @@
     }
 
     const idToken = await getSupabaseSyncToken(user);
+    const supabaseAccessToken = await getSupabaseBridgeAccessTokenEarly();
+    const actorToken = idToken || supabaseAccessToken;
 
-    if (!idToken) {
+    if (!actorToken) {
       throw createFirebaseError(
         "auth/no-current-user",
         "Sign in again before syncing with Supabase."
@@ -1683,7 +1685,7 @@
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: "Bearer " + idToken,
+          Authorization: "Bearer " + actorToken,
         },
         body: JSON.stringify({
           action,
@@ -3133,16 +3135,22 @@
       return code === "profile/record-missing" || code === "permission-denied";
     };
     const ensureRootActorSnapshot = async () => {
-      const user = auth.currentUser;
-
-      if (!user || user.isAnonymous) {
-        throw createFirebaseError("auth/no-current-user", "Sign in again to open the admin panel.");
-      }
+      const user = auth.currentUser && !auth.currentUser.isAnonymous ? auth.currentUser : null;
 
       let actorSnapshot = window.sakuraCurrentUserSnapshot;
 
-      if (!actorSnapshot || actorSnapshot.isAnonymous || actorSnapshot.uid !== user.uid) {
-        actorSnapshot = await resolveUserSnapshot(user);
+      if (
+        !actorSnapshot ||
+        actorSnapshot.isAnonymous ||
+        (user && actorSnapshot.uid !== user.uid)
+      ) {
+        actorSnapshot = user
+          ? await resolveUserSnapshot(user)
+          : await resolveSupabaseSessionSnapshotFallback();
+      }
+
+      if (!actorSnapshot || actorSnapshot.isAnonymous) {
+        throw createFirebaseError("auth/no-current-user", "Sign in again to open the admin panel.");
       }
 
       if (!canManageRoles(actorSnapshot?.roles ?? [])) {
@@ -3593,21 +3601,16 @@
       runtimePendingLookupCache.clear();
     };
     const deleteCurrentAccount = async () => {
-      const user = auth.currentUser;
-
-      if (!user || user.isAnonymous) {
-        throw createFirebaseError(
-          "auth/no-current-user",
-          "Sign in again before deleting the account."
-        );
-      }
+      const user = auth.currentUser && !auth.currentUser.isAnonymous ? auth.currentUser : null;
 
       const snapshot =
         window.sakuraCurrentUserSnapshot &&
         !window.sakuraCurrentUserSnapshot.isAnonymous &&
-        window.sakuraCurrentUserSnapshot.uid === user.uid
+        (!user || window.sakuraCurrentUserSnapshot.uid === user.uid)
           ? window.sakuraCurrentUserSnapshot
-          : await resolveUserSnapshot(user);
+          : user
+            ? await resolveUserSnapshot(user)
+            : await resolveSupabaseSessionSnapshotFallback();
 
       if (!snapshot || snapshot.isAnonymous) {
         throw createFirebaseError(
@@ -3650,15 +3653,17 @@
       }
 
       try {
-        await withTimeout(
-          signOut(auth),
-          AUTH_SIGN_OUT_TIMEOUT_MS,
-          () =>
-            createFirebaseError(
-              "auth/signout-timeout",
-              "Firebase sign out timed out."
-            )
-        );
+        if (user) {
+          await withTimeout(
+            signOut(auth),
+            AUTH_SIGN_OUT_TIMEOUT_MS,
+            () =>
+              createFirebaseError(
+                "auth/signout-timeout",
+                "Firebase sign out timed out."
+              )
+          );
+        }
       } catch (error) {
       }
 
@@ -3680,7 +3685,7 @@
 
       ensureActorCanManageTargetProfile(actorSnapshot?.roles ?? [], targetDoc.data()?.roles ?? []);
 
-      if (targetDoc.id === user.uid) {
+      if (user && targetDoc.id === user.uid) {
         throw createFirebaseError(
           "admin/self-delete-forbidden",
           "Use the profile delete button for your own account."
@@ -5707,7 +5712,7 @@
         );
       }
 
-      if (targetDoc.id === user.uid) {
+      if (user && targetDoc.id === user.uid) {
         try {
           await updateProfile(user, { displayName: sanitizedDisplayName });
         } catch (error) {
@@ -6068,7 +6073,7 @@
 
       const bannedAt = isBanned ? new Date().toISOString() : null;
 
-      if (targetDoc.id === user.uid && isBanned) {
+      if (user && targetDoc.id === user.uid && isBanned) {
         throw createFirebaseError(
           "ban/self-forbidden",
           "You cannot ban your own account."
@@ -6102,7 +6107,7 @@
         bannedAt,
       });
 
-      if (targetDoc.id === user.uid && isBanned) {
+      if (user && targetDoc.id === user.uid && isBanned) {
         await enforceActiveSessionNotBanned(
           {
             ...(window.sakuraCurrentUserSnapshot ?? snapshot),

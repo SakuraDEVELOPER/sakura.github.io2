@@ -52,6 +52,15 @@ type ActorProfile = {
   avatarPath: string | null;
 };
 
+type RequestActor = {
+  uid: string;
+  source: "firebase" | "supabase";
+  firebaseUid: string | null;
+  authUserId: string | null;
+  email: string | null;
+  emailVerified: boolean;
+};
+
 const PROFILE_COMPATIBILITY_SELECT =
   "firebase_uid,profile_id,roles,auth_user_id,email,email_verified,verification_required,provider_ids,display_name,avatar_path";
 
@@ -207,7 +216,7 @@ const getBearerToken = (request: Request) => {
   return token || null;
 };
 
-const verifyFirebaseIdToken = async (token: string) => {
+const verifyFirebaseIdToken = async (token: string): Promise<RequestActor> => {
   const { payload } = await jwtVerify(token, firebaseJwks, {
     issuer: `https://securetoken.google.com/${firebaseProjectId}`,
     audience: firebaseProjectId,
@@ -221,20 +230,96 @@ const verifyFirebaseIdToken = async (token: string) => {
 
   return {
     uid,
+    source: "firebase" as const,
+    firebaseUid: uid,
+    authUserId: null,
     email: typeof payload.email === "string" ? payload.email : null,
     emailVerified: payload.email_verified === true,
   };
 };
 
-const loadActorProfile = async (firebaseUid: string): Promise<ActorProfile> => {
-  const { data, error } = await supabaseAdmin
-    .from("profiles")
-    .select(PROFILE_COMPATIBILITY_SELECT)
-    .eq("firebase_uid", firebaseUid)
-    .maybeSingle();
+const verifySupabaseAccessToken = async (token: string): Promise<RequestActor> => {
+  const { data, error } = await supabaseAdmin.auth.getUser(token);
 
-  if (error) {
-    throw error;
+  if (error || !data.user?.id) {
+    throw error ?? new Error("Supabase token is invalid.");
+  }
+
+  return {
+    uid: data.user.id,
+    source: "supabase",
+    firebaseUid: null,
+    authUserId: data.user.id,
+    email: typeof data.user.email === "string" ? data.user.email : null,
+    emailVerified: Boolean(data.user.email_confirmed_at || data.user.confirmed_at),
+  };
+};
+
+const verifyRequestActor = async (token: string): Promise<RequestActor> => {
+  try {
+    return await verifyFirebaseIdToken(token);
+  } catch (_firebaseError) {
+    return await verifySupabaseAccessToken(token);
+  }
+};
+
+const emptyActorProfile = (): ActorProfile => ({
+  firebaseUid: null,
+  profileId: null,
+  roles: [],
+  authUserId: null,
+  email: null,
+  emailVerified: null,
+  verificationRequired: null,
+  providerIds: [],
+  displayName: null,
+  avatarPath: null,
+});
+
+const loadActorProfile = async (actor: RequestActor): Promise<ActorProfile> => {
+  const actorFirebaseUid = normalizeString(actor.firebaseUid, 128);
+  const actorAuthUserId = normalizeString(actor.authUserId, 128);
+
+  if (!actorFirebaseUid && !actorAuthUserId) {
+    return emptyActorProfile();
+  }
+
+  let data: Record<string, unknown> | null = null;
+
+  if (actorAuthUserId) {
+    const { data: authMatchedProfile, error: authMatchError } = await supabaseAdmin
+      .from("profiles")
+      .select(PROFILE_COMPATIBILITY_SELECT)
+      .eq("auth_user_id", actorAuthUserId)
+      .maybeSingle();
+
+    if (authMatchError) {
+      throw authMatchError;
+    }
+
+    if (authMatchedProfile) {
+      data = authMatchedProfile as Record<string, unknown>;
+    }
+  }
+
+  if (!data && actorFirebaseUid) {
+    const { data: firebaseMatchedProfile, error: firebaseMatchError } = await supabaseAdmin
+      .from("profiles")
+      .select(PROFILE_COMPATIBILITY_SELECT)
+      .eq("firebase_uid", actorFirebaseUid)
+      .maybeSingle();
+
+    if (firebaseMatchError) {
+      throw firebaseMatchError;
+    }
+
+    if (firebaseMatchedProfile) {
+      data = firebaseMatchedProfile as Record<string, unknown>;
+    }
+  }
+
+  if (!data || typeof data !== "object") {
+    return emptyActorProfile();
   }
 
   return {
@@ -312,7 +397,7 @@ const syncFirebaseVerificationCompatibility = async (
 };
 
 const handleAdminSetProfileEmailVerification = async (
-  actor: { uid: string; email: string | null; emailVerified: boolean },
+  actor: RequestActor,
   body: JsonRecord,
 ) => {
   const profileId = normalizeInteger(body.profileId);
@@ -322,7 +407,7 @@ const handleAdminSetProfileEmailVerification = async (
     return json({ error: "Profile id must be a positive number." }, 400);
   }
 
-  const actorProfile = await loadActorProfile(actor.uid);
+  const actorProfile = await loadActorProfile(actor);
 
   if (!canManageRoles(actorProfile.roles)) {
     return json({ error: "Only root and co-owner accounts can use this admin action." }, 403);
@@ -576,7 +661,7 @@ const deleteFirebaseFirestoreAccountData = async (
 };
 
 const authorizeStorageObjectPath = async (
-  firebaseUid: string,
+  actorUid: string,
   actorProfile: ActorProfile,
   objectPath: string,
 ) => {
@@ -600,7 +685,7 @@ const authorizeStorageObjectPath = async (
 
   const folder = pathSegments[0];
   const targetUid = pathSegments[1];
-  const isOwner = targetUid === firebaseUid;
+  const isOwner = targetUid === actorUid;
   const canModerate = canManageStorageObjects(actorProfile.roles);
 
   if (!["avatars", "comments"].includes(folder)) {
@@ -696,7 +781,7 @@ const linkProfileToSupabaseAuthUser = async (
 };
 
 const handleEnsureSupabasePasswordUser = async (
-  actor: { uid: string; email: string | null; emailVerified: boolean },
+  actor: RequestActor,
   body: JsonRecord,
 ) => {
   const authPayload = body.auth;
@@ -705,7 +790,7 @@ const handleEnsureSupabasePasswordUser = async (
     return json({ error: "Missing auth payload." }, 400);
   }
 
-  const actorProfile = await loadActorProfile(actor.uid);
+  const actorProfile = await loadActorProfile(actor);
   const requestedEmail = normalizeString((authPayload as JsonRecord).email, 320);
   const email = requestedEmail ?? actor.email ?? actorProfile.email;
   const password = normalizePassword((authPayload as JsonRecord).password);
@@ -724,9 +809,15 @@ const handleEnsureSupabasePasswordUser = async (
     return json({ error: "Supabase auth email must match the Firebase session email." }, 403);
   }
 
-  const userMetadata: Record<string, unknown> = {
-    firebase_uid: actor.uid,
-  };
+  const userMetadata: Record<string, unknown> = {};
+
+  if (actor.firebaseUid) {
+    userMetadata.firebase_uid = actor.firebaseUid;
+  }
+
+  if (actor.authUserId) {
+    userMetadata.auth_user_id = actor.authUserId;
+  }
 
   if (displayName) {
     userMetadata.display_name = displayName;
@@ -804,10 +895,13 @@ const handleEnsureSupabasePasswordUser = async (
 };
 
 const handleDeleteProfileAccountData = async (
-  actor: { uid: string; email: string | null },
+  actor: RequestActor,
 ) => {
-  const actorProfile = await loadActorProfile(actor.uid);
-  const firebaseCleanup = await deleteFirebaseFirestoreAccountData(actor.uid, actorProfile.profileId);
+  const actorProfile = await loadActorProfile(actor);
+  const actorFirebaseUid = actorProfile.firebaseUid ?? actor.firebaseUid;
+  const firebaseCleanup = actorFirebaseUid
+    ? await deleteFirebaseFirestoreAccountData(actorFirebaseUid, actorProfile.profileId)
+    : { profileId: actorProfile.profileId, profileCount: null };
   const profileId = firebaseCleanup.profileId ?? actorProfile.profileId;
   const mediaPaths = new Set<string>();
 
@@ -856,6 +950,7 @@ const handleDeleteProfileAccountData = async (
 
   const supabaseAuthUserId =
     actorProfile.authUserId ??
+    actor.authUserId ??
     (actorProfile.email ? await findSupabaseAuthUserIdByEmail(actorProfile.email) : null) ??
     (actor.email ? await findSupabaseAuthUserIdByEmail(actor.email) : null);
 
@@ -869,11 +964,13 @@ const handleDeleteProfileAccountData = async (
     }
   }
 
-  try {
-    await getFirebaseAdminAuth().deleteUser(actor.uid);
-  } catch (error) {
-    if (!isMissingAuthUserError(error)) {
-      throw error;
+  if (actorFirebaseUid) {
+    try {
+      await getFirebaseAdminAuth().deleteUser(actorFirebaseUid);
+    } catch (error) {
+      if (!isMissingAuthUserError(error)) {
+        throw error;
+      }
     }
   }
 
@@ -883,14 +980,14 @@ const handleDeleteProfileAccountData = async (
     profileId,
     profileCount: firebaseCleanup.profileCount,
     deletedSupabaseAuthUserId: supabaseAuthUserId,
-    deletedFirebaseUid: actor.uid,
+    deletedFirebaseUid: actorFirebaseUid,
   });
 };
 const handleAdminDeleteProfileAccountData = async (
-  actor: { uid: string; email: string | null },
+  actor: RequestActor,
   body: JsonRecord,
 ) => {
-  const actorProfile = await loadActorProfile(actor.uid);
+  const actorProfile = await loadActorProfile(actor);
 
   if (!canManageRoles(actorProfile.roles)) {
     return json({ error: "Only root and co-owner accounts can delete accounts from the admin panel." }, 403);
@@ -915,7 +1012,12 @@ const handleAdminDeleteProfileAccountData = async (
 
   ensureActorCanManageTargetProfile(actorProfile.roles, targetProfile.roles);
 
-  if (targetProfile.firebaseUid && targetProfile.firebaseUid === actor.uid) {
+  if (
+    (typeof actorProfile.profileId === "number" && actorProfile.profileId === targetProfile.profileId) ||
+    (targetProfile.firebaseUid &&
+      actor.firebaseUid &&
+      targetProfile.firebaseUid === actor.firebaseUid)
+  ) {
     return json({ error: "Use the owner delete flow for your own account." }, 403);
   }
 
@@ -1007,10 +1109,10 @@ const handleAdminDeleteProfileAccountData = async (
   });
 };
 const handleGetPrivateProfileFields = async (
-  actor: { uid: string; email: string | null },
+  actor: RequestActor,
   body: JsonRecord,
 ) => {
-  const actorProfile = await loadActorProfile(actor.uid);
+  const actorProfile = await loadActorProfile(actor);
   const targetProfileId = normalizeInteger(body.profileId);
 
   if (!targetProfileId || targetProfileId <= 0) {
@@ -1049,7 +1151,7 @@ const handleGetPrivateProfileFields = async (
   });
 };
 
-const handlePresenceUpsert = async (firebaseUid: string, body: JsonRecord) => {
+const handlePresenceUpsert = async (actor: RequestActor, body: JsonRecord) => {
   const presence = body.presence;
 
   if (!presence || typeof presence !== "object") {
@@ -1059,7 +1161,7 @@ const handlePresenceUpsert = async (firebaseUid: string, body: JsonRecord) => {
   let profileId = normalizeInteger((presence as JsonRecord).profileId);
 
   if (!profileId || profileId <= 0) {
-    const actorProfile = await loadActorProfile(firebaseUid);
+    const actorProfile = await loadActorProfile(actor);
     profileId = actorProfile.profileId;
   }
 
@@ -1069,7 +1171,8 @@ const handlePresenceUpsert = async (firebaseUid: string, body: JsonRecord) => {
 
   const row = {
     profile_id: profileId,
-    firebase_uid: firebaseUid,
+    firebase_uid: actor.firebaseUid,
+    auth_user_id: actor.authUserId,
     status: (presence as JsonRecord).status === "online" ? "online" : "offline",
     is_online: (presence as JsonRecord).isOnline === true,
     current_path: normalizeString((presence as JsonRecord).currentPath, 512),
@@ -1088,7 +1191,7 @@ const handlePresenceUpsert = async (firebaseUid: string, body: JsonRecord) => {
   return json({ ok: true, action: "upsert_presence", profileId });
 };
 
-const handleCommentUpsert = async (firebaseUid: string, body: JsonRecord) => {
+const handleCommentUpsert = async (actor: RequestActor, body: JsonRecord) => {
   const comment = body.comment;
 
   if (!comment || typeof comment !== "object") {
@@ -1104,10 +1207,11 @@ const handleCommentUpsert = async (firebaseUid: string, body: JsonRecord) => {
     return json({ error: "Comment id, profile id, and author uid are required." }, 400);
   }
 
-  const actorProfile = await loadActorProfile(firebaseUid);
+  const actorProfile = await loadActorProfile(actor);
+  const actorUid = actor.firebaseUid ?? actor.authUserId ?? actor.uid;
   const { data: existingComment, error: existingCommentError } = await supabaseAdmin
     .from("profile_comments")
-    .select("id,firebase_author_uid,profile_id")
+    .select("id,firebase_author_uid,auth_user_id,profile_id")
     .eq("id", commentId)
     .maybeSingle();
 
@@ -1115,8 +1219,10 @@ const handleCommentUpsert = async (firebaseUid: string, body: JsonRecord) => {
     throw existingCommentError;
   }
 
-  const isOwnComment = authorUid === firebaseUid;
-  const isExistingOwnComment = existingComment?.firebase_author_uid === firebaseUid;
+  const isOwnComment = authorUid === actorUid;
+  const isExistingOwnComment =
+    existingComment?.firebase_author_uid === actor.firebaseUid ||
+    existingComment?.auth_user_id === actor.authUserId;
   const ownsTargetProfile =
     typeof actorProfile.profileId === "number" &&
     actorProfile.profileId > 0 &&
@@ -1135,7 +1241,8 @@ const handleCommentUpsert = async (firebaseUid: string, body: JsonRecord) => {
     id: commentId,
     profile_id: profileId,
     author_profile_id: authorProfileId,
-    firebase_author_uid: authorUid,
+    auth_user_id: actor.authUserId,
+    firebase_author_uid: actor.firebaseUid,
     author_name: normalizeString((comment as JsonRecord).authorName, 96),
     author_photo_url: normalizeString((comment as JsonRecord).authorPhotoURL, 2048),
     author_accent_role: normalizeString((comment as JsonRecord).authorAccentRole, 64),
@@ -1161,17 +1268,17 @@ const handleCommentUpsert = async (firebaseUid: string, body: JsonRecord) => {
   return json({ ok: true, action: "upsert_comment", commentId });
 };
 
-const handleCommentDelete = async (firebaseUid: string, body: JsonRecord) => {
+const handleCommentDelete = async (actor: RequestActor, body: JsonRecord) => {
   const commentId = normalizeString(body.commentId, 128);
 
   if (!commentId) {
     return json({ error: "Comment id is required." }, 400);
   }
 
-  const actorProfile = await loadActorProfile(firebaseUid);
+  const actorProfile = await loadActorProfile(actor);
   const { data: existingComment, error: existingCommentError } = await supabaseAdmin
     .from("profile_comments")
-    .select("id,firebase_author_uid,profile_id")
+    .select("id,firebase_author_uid,auth_user_id,profile_id")
     .eq("id", commentId)
     .maybeSingle();
 
@@ -1183,7 +1290,9 @@ const handleCommentDelete = async (firebaseUid: string, body: JsonRecord) => {
     return json({ ok: true, action: "delete_comment", commentId, deleted: false });
   }
 
-  const isAuthor = existingComment.firebase_author_uid === firebaseUid;
+  const isAuthor =
+    existingComment.firebase_author_uid === actor.firebaseUid ||
+    existingComment.auth_user_id === actor.authUserId;
   const ownsTargetProfile =
     typeof actorProfile.profileId === "number" &&
     actorProfile.profileId > 0 &&
@@ -1203,11 +1312,18 @@ const handleCommentDelete = async (firebaseUid: string, body: JsonRecord) => {
   return json({ ok: true, action: "delete_comment", commentId, deleted: true });
 };
 
-const handleCreateSignedUploadUrl = async (firebaseUid: string, body: JsonRecord) => {
+const handleCreateSignedUploadUrl = async (actor: RequestActor, body: JsonRecord) => {
   const bucket = normalizeBucketName(body.bucket);
-  const actorProfile = await loadActorProfile(firebaseUid);
+  const actorProfile = await loadActorProfile(actor);
+  const actorUid =
+    actor.firebaseUid ?? actor.authUserId ?? actorProfile.firebaseUid ?? actorProfile.authUserId;
+
+  if (!actorUid) {
+    return json({ error: "Storage action is not allowed for this actor." }, 403);
+  }
+
   const authorization = await authorizeStorageObjectPath(
-    firebaseUid,
+    actorUid,
     actorProfile,
     String(body.objectPath ?? ""),
   );
@@ -1233,11 +1349,18 @@ const handleCreateSignedUploadUrl = async (firebaseUid: string, body: JsonRecord
   });
 };
 
-const handleDeleteStorageObject = async (firebaseUid: string, body: JsonRecord) => {
+const handleDeleteStorageObject = async (actor: RequestActor, body: JsonRecord) => {
   const bucket = normalizeBucketName(body.bucket);
-  const actorProfile = await loadActorProfile(firebaseUid);
+  const actorProfile = await loadActorProfile(actor);
+  const actorUid =
+    actor.firebaseUid ?? actor.authUserId ?? actorProfile.firebaseUid ?? actorProfile.authUserId;
+
+  if (!actorUid) {
+    return json({ error: "Storage action is not allowed for this actor." }, 403);
+  }
+
   const authorization = await authorizeStorageObjectPath(
-    firebaseUid,
+    actorUid,
     actorProfile,
     String(body.objectPath ?? ""),
   );
@@ -1278,13 +1401,23 @@ Deno.serve(async (request) => {
       return json({ error: "Missing bearer token." }, 401);
     }
 
-    const actor = await verifyFirebaseIdToken(token);
+    let actor: RequestActor;
+
+    try {
+      actor = await verifyRequestActor(token);
+    } catch (_error) {
+      return json({ error: "Invalid or expired bearer token." }, 401);
+    }
+
     const body = (await request.json()) as JsonRecord;
     const action = normalizeString(body.action, 64);
 
     switch (action) {
       case "upsert_profile":
-        return await handleProfileUpsert(actor.uid, body);
+        if (!actor.firebaseUid) {
+          return json({ error: "upsert_profile requires a Firebase actor." }, 403);
+        }
+        return await handleProfileUpsert(actor.firebaseUid, body);
       case "ensure_supabase_password_user":
         return await handleEnsureSupabasePasswordUser(actor, body);
       case "delete_profile_account_data":
@@ -1296,15 +1429,15 @@ Deno.serve(async (request) => {
       case "get_private_profile_fields":
         return await handleGetPrivateProfileFields(actor, body);
       case "upsert_presence":
-        return await handlePresenceUpsert(actor.uid, body);
+        return await handlePresenceUpsert(actor, body);
       case "upsert_comment":
-        return await handleCommentUpsert(actor.uid, body);
+        return await handleCommentUpsert(actor, body);
       case "delete_comment":
-        return await handleCommentDelete(actor.uid, body);
+        return await handleCommentDelete(actor, body);
       case "create_signed_upload_url":
-        return await handleCreateSignedUploadUrl(actor.uid, body);
+        return await handleCreateSignedUploadUrl(actor, body);
       case "delete_storage_object":
-        return await handleDeleteStorageObject(actor.uid, body);
+        return await handleDeleteStorageObject(actor, body);
       default:
         return json({ error: "Unsupported action." }, 400);
     }
