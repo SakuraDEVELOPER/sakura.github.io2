@@ -1118,6 +1118,10 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<UserProfile | null>(bootstrap.profile);
   const [requestedProfileId, setRequestedProfileId] = useState<number | null>(bootstrap.requestedProfileId);
   const [profileError, setProfileError] = useState<string | null>(null);
+  const [deletedProfileNotice, setDeletedProfileNotice] = useState<{
+    profileId: number;
+    displayName: string | null;
+  } | null>(null);
   const [isProfileLoading, setIsProfileLoading] = useState(false);
   const [hasHydrated, setHasHydrated] = useState(false);
   const [showPendingState, setShowPendingState] = useState(false);
@@ -1359,6 +1363,21 @@ export default function ProfilePage() {
       })
       .finally(() => setIsProfileLoading(false));
   }, [authReady, authStateSettled, authError, currentUser, requestedProfileId]);
+
+  useEffect(() => {
+    if (!deletedProfileNotice) {
+      return;
+    }
+
+    if (profile) {
+      setDeletedProfileNotice(null);
+      return;
+    }
+
+    if (requestedProfileId !== deletedProfileNotice.profileId) {
+      setDeletedProfileNotice(null);
+    }
+  }, [deletedProfileNotice, profile, requestedProfileId]);
 
   useEffect(() => {
     if (
@@ -3545,16 +3564,20 @@ export default function ProfilePage() {
     setIsAdminAccountDeleting(true);
 
     try {
+      const deletedProfileId = activeProfile.profileId;
+      const deletedProfileName =
+        activeProfile.displayName ?? activeProfile.login ?? `Profile #${activeProfile.profileId}`;
       await bridge.adminDeleteAccount(activeProfile.profileId);
       setIsAdminPanelOpen(false);
       setProfile(null);
+      setProfileError(null);
+      setDeletedProfileNotice({
+        profileId: deletedProfileId,
+        displayName: deletedProfileName,
+      });
       setComments([]);
       setCommentAuthorProfiles({});
       setCommentAuthorProfilesByCommentId({});
-
-      if (!redirectToLocalProfile(activeProfile.profileId, visibleCurrentUser?.profileId ?? null)) {
-        redirectToRepoHome();
-      }
     } catch (error) {
       setAdminAccountDeleteError(
         getProfileActionErrorMessage(error, "Could not delete this account.")
@@ -3958,7 +3981,8 @@ export default function ProfilePage() {
 
         {authError ? <section className="rounded-[32px] border border-red-400/20 bg-red-500/10 px-8 py-12"><p className="font-mono text-[10px] uppercase tracking-[0.4em] text-[#ffb7c5]">Auth Error</p><p className="mt-4 text-sm leading-relaxed text-red-100/85">{authError}</p></section> : null}
         {hasHydrated && showPendingState ? <section className="rounded-[32px] border border-[#181818] bg-[#090909]/85 px-6 py-5 shadow-[0_0_40px_rgba(255,183,197,0.04)]"><div className="flex items-center justify-between gap-4"><div><p className="font-mono text-[10px] uppercase tracking-[0.34em] text-[#ffb7c5]">Loading</p><p className="mt-2 text-sm text-gray-400">{requestedProfileId ? `Preparing profile #${requestedProfileId}...` : "Preparing profile..."}</p></div><div className="h-2 w-2 rounded-full bg-[#ffb7c5] animate-pulse"></div></div></section> : null}
-        {hasHydrated && authReady && !authError && !isProfileLoading && !activeProfile && profileError ? <section className="rounded-[32px] border border-[#201517] bg-[#0d0d0d] px-8 py-12 shadow-[0_0_60px_rgba(255,183,197,0.06)]"><p className="font-mono text-[10px] uppercase tracking-[0.4em] text-[#ffb7c5]">{requestedProfileId ? "Profile Missing" : "Guest State"}</p><p className="mt-4 text-sm leading-relaxed text-gray-400">{profileError}</p></section> : null}
+        {hasHydrated && authReady && !authError && !isProfileLoading && !activeProfile && deletedProfileNotice ? <section className="rounded-[32px] border border-[#3a2027] bg-[radial-gradient(circle_at_top,rgba(255,183,197,0.12),transparent_56%),linear-gradient(180deg,#120b0d_0%,#090909_100%)] px-8 py-12 shadow-[0_0_60px_rgba(255,183,197,0.08)]"><p className="font-mono text-[10px] uppercase tracking-[0.4em] text-[#ffb7c5]">Profile Deleted</p><p className="mt-4 text-sm leading-relaxed text-gray-300">{deletedProfileNotice.displayName ? `${deletedProfileNotice.displayName} was permanently removed.` : `Profile #${deletedProfileNotice.profileId} was permanently removed.`}</p><p className="mt-2 text-sm leading-relaxed text-gray-500">You can return to your own profile or go back to the main page.</p><div className="mt-6 flex flex-wrap items-center gap-3">{visibleCurrentUser?.profileId ? <button type="button" onClick={() => window.location.replace(profilePath(visibleCurrentUser.profileId!))} className="inline-flex items-center justify-center rounded-full border border-[#ffb7c5]/30 bg-[#ffb7c5] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-black transition hover:bg-[#ffc8d3]">Return to My Profile</button> : null}<button type="button" onClick={redirectToRepoHome} className="inline-flex items-center justify-center rounded-full border border-[#3a2a31] bg-[#140d11] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-[#ffb7c5] transition hover:border-[#ffb7c5]/40 hover:text-white">Go Home</button></div></section> : null}
+        {hasHydrated && authReady && !authError && !isProfileLoading && !activeProfile && !deletedProfileNotice && profileError ? <section className="rounded-[32px] border border-[#201517] bg-[#0d0d0d] px-8 py-12 shadow-[0_0_60px_rgba(255,183,197,0.06)]"><p className="font-mono text-[10px] uppercase tracking-[0.4em] text-[#ffb7c5]">{requestedProfileId ? "Profile Missing" : "Guest State"}</p><p className="mt-4 text-sm leading-relaxed text-gray-400">{profileError}</p></section> : null}
 
         {activeProfile ? (
           <section className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,64fr)_minmax(0,36fr)] lg:items-start">
