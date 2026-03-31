@@ -1432,6 +1432,12 @@
         }),
       });
 
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "");
+        console.error("Supabase live sync rejected action:", action, response.status, errorText);
+        return false;
+      }
+
       return response.ok;
     } catch (error) {
       console.error("Supabase live sync failed:", error);

@@ -195,6 +195,16 @@ export const createFirebasePresenceRuntime = (context: FirebasePresenceRuntimeCo
         }),
       });
 
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "");
+        console.error(
+          "Failed to sync presence to Supabase:",
+          response.status,
+          errorText
+        );
+        return false;
+      }
+
       return response.ok;
     } catch (error) {
       console.error("Failed to sync presence to Supabase:", error);
