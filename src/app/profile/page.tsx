@@ -289,6 +289,18 @@ const getProfileActionErrorMessage = (error: unknown, fallback: string) => {
     return "Use the owner delete button for your own account.";
   }
 
+  if (code === "account/delete-timeout") {
+    return "Account deletion took too long. Try again, and if it repeats we will narrow down the exact step.";
+  }
+
+  if (code === "supabase-sync/timeout") {
+    return "Supabase sync timed out during account deletion. Try again.";
+  }
+
+  if (code === "auth/signout-timeout") {
+    return "Sign out took too long after deletion. Refresh the page and check the account state.";
+  }
+
   return error instanceof Error ? error.message : fallback;
 };
 const getCommentWriteDeniedMessage = (hasMedia: boolean) =>
@@ -3200,7 +3212,14 @@ export default function ProfilePage() {
     setIsAccountDeleting(true);
 
     try {
-      await bridge.deleteAccount();
+      await Promise.race([
+        bridge.deleteAccount(),
+        new Promise<null>((_, reject) => {
+          window.setTimeout(() => {
+            reject(new Error("Account deletion took too long. Try again."));
+          }, 18000);
+        }),
+      ]);
       clearStoredProfileNavigationState();
       setIsProfileControlsOpen(false);
       setIsAdminPanelOpen(false);

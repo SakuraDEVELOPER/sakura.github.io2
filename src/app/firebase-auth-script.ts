@@ -94,6 +94,7 @@
   const PROFILE_LOOKUP_TIMEOUT_MS = 5000;
   const SUPABASE_SYNC_REQUEST_TIMEOUT_MS = 12000;
   const AUTH_SIGN_OUT_TIMEOUT_MS = 4000;
+  const ACCOUNT_DELETE_TIMEOUT_MS = 15000;
   const PROFILE_RUNTIME_CACHE_TTL_MS = 2 * 60 * 1000;
   const PROFILE_SEARCH_RUNTIME_CACHE_TTL_MS = 45 * 1000;
   const ONLINE_USERS_RUNTIME_CACHE_TTL_MS = 8 * 1000;
@@ -2843,7 +2844,15 @@
       stopPresenceTracking();
 
       try {
-        await deleteFirestoreProfileAccountData(user.uid, snapshot);
+        await withTimeout(
+          deleteFirestoreProfileAccountData(user.uid, snapshot),
+          ACCOUNT_DELETE_TIMEOUT_MS,
+          () =>
+            createFirebaseError(
+              "account/delete-timeout",
+              "Account deletion timed out while cleaning Firebase data. Try again."
+            )
+        );
       } catch (error) {
         const message =
           error instanceof Error && error.message
@@ -2852,12 +2861,20 @@
         throw createFirebaseError("account/delete-firestore-failed", message);
       }
 
-      await requestSupabaseSyncActionOrThrow(
-        user,
-        "delete_profile_account_data",
-        {},
-        "account/delete-sync-failed",
-        "Account data could not be deleted from Supabase."
+      await withTimeout(
+        requestSupabaseSyncActionOrThrow(
+          user,
+          "delete_profile_account_data",
+          {},
+          "account/delete-sync-failed",
+          "Account data could not be deleted from Supabase."
+        ),
+        ACCOUNT_DELETE_TIMEOUT_MS,
+        () =>
+          createFirebaseError(
+            "account/delete-timeout",
+            "Account deletion timed out while syncing with Supabase. Try again."
+          )
       );
 
       clearProfileLookupCaches();
