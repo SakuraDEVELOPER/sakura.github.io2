@@ -38,6 +38,31 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 const supabaseRestUrl = supabaseUrl ? supabaseUrl.replace(/\/+$/, "") + "/rest/v1" : "";
 const supabaseReadsEnabled = Boolean(supabaseRestUrl && supabaseAnonKey);
+const supabaseLiveSyncEnabled = (process.env.NEXT_PUBLIC_SUPABASE_LIVE_SYNC_ENABLED ?? "") === "true";
+const supabaseSyncFunctionUrl = (() => {
+  const explicitUrl = process.env.NEXT_PUBLIC_SUPABASE_SYNC_FUNCTION_URL ?? "";
+
+  if (explicitUrl) {
+    return explicitUrl;
+  }
+
+  if (!supabaseUrl) {
+    return "";
+  }
+
+  try {
+    const baseUrl = new URL(supabaseUrl);
+    const baseSuffix = ".supabase.co";
+    const nextHost = baseUrl.host.endsWith(baseSuffix)
+      ? baseUrl.host.slice(0, baseUrl.host.length - baseSuffix.length) + ".functions.supabase.co"
+      : baseUrl.host;
+
+    return `${baseUrl.protocol}//${nextHost}/firebase-sync`;
+  } catch {
+    return "";
+  }
+})();
+const supabaseLiveSyncActive = Boolean(supabaseLiveSyncEnabled && supabaseSyncFunctionUrl);
 
 export const createFirebasePresenceRuntime = (context: FirebasePresenceRuntimeContext) => {
   const {
@@ -131,6 +156,49 @@ export const createFirebasePresenceRuntime = (context: FirebasePresenceRuntimeCo
       return Array.isArray(payload) ? payload : null;
     } catch {
       return null;
+    }
+  };
+
+  const getSupabaseSyncToken = async (user: any) => {
+    if (!user || typeof user.getIdToken !== "function") {
+      return null;
+    }
+
+    try {
+      return await user.getIdToken();
+    } catch {
+      return null;
+    }
+  };
+
+  const syncSupabasePresenceRecord = async (user: any, presencePayload: Record<string, unknown>) => {
+    if (!supabaseLiveSyncActive) {
+      return false;
+    }
+
+    const idToken = await getSupabaseSyncToken(user);
+
+    if (!idToken) {
+      return false;
+    }
+
+    try {
+      const response = await fetch(supabaseSyncFunctionUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          action: "upsert_presence",
+          presence: presencePayload,
+        }),
+      });
+
+      return response.ok;
+    } catch (error) {
+      console.error("Failed to sync presence to Supabase:", error);
+      return false;
     }
   };
 
@@ -546,6 +614,22 @@ export const createFirebasePresenceRuntime = (context: FirebasePresenceRuntimeCo
         },
         { merge: true }
       );
+
+      const currentSnapshot = (window as any).sakuraCurrentUserSnapshot;
+      const profileId =
+        typeof existingData?.profileId === "number"
+          ? existingData.profileId
+          : typeof currentSnapshot?.profileId === "number"
+            ? currentSnapshot.profileId
+            : null;
+
+      void syncSupabasePresenceRecord(user, {
+        profileId,
+        status: presence.status,
+        isOnline: presence.isOnline,
+        currentPath: presence.currentPath,
+        lastSeenAt: presence.lastSeenAt,
+      });
 
       invalidateSiteOnlineUsersCache();
       window.dispatchEvent(new CustomEvent("sakura-presence-dirty"));

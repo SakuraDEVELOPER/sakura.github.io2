@@ -1258,6 +1258,34 @@
   const SUPABASE_PUBLIC_READS_ENABLED = Boolean(
     SUPABASE_REST_URL && SUPABASE_PUBLIC_ANON_KEY
   );
+  const SUPABASE_LIVE_SYNC_ENABLED =
+    ${JSON.stringify(process.env.NEXT_PUBLIC_SUPABASE_LIVE_SYNC_ENABLED ?? "")} === "true";
+  const SUPABASE_SYNC_FUNCTION_URL = (() => {
+    const explicitUrl = ${JSON.stringify(process.env.NEXT_PUBLIC_SUPABASE_SYNC_FUNCTION_URL ?? "")};
+
+    if (explicitUrl) {
+      return explicitUrl;
+    }
+
+    if (!SUPABASE_PUBLIC_URL) {
+      return "";
+    }
+
+    try {
+      const baseUrl = new URL(SUPABASE_PUBLIC_URL);
+      const baseSuffix = ".supabase.co";
+      const nextHost = baseUrl.host.endsWith(baseSuffix)
+        ? baseUrl.host.slice(0, baseUrl.host.length - baseSuffix.length) + ".functions.supabase.co"
+        : baseUrl.host;
+
+      return baseUrl.protocol + "//" + nextHost + "/firebase-sync";
+    } catch (error) {
+      return "";
+    }
+  })();
+  const SUPABASE_LIVE_SYNC_ACTIVE = Boolean(
+    SUPABASE_LIVE_SYNC_ENABLED && SUPABASE_SYNC_FUNCTION_URL
+  );
   const SUPABASE_PROFILE_SELECT = [
     "auth_user_id",
     "firebase_uid",
@@ -1356,6 +1384,134 @@
     } catch (error) {
       return null;
     }
+  };
+
+  const normalizeSupabaseTextArray = (value) =>
+    Array.isArray(value)
+      ? value.filter((entry) => typeof entry === "string").map((entry) => entry.trim()).filter(Boolean)
+      : [];
+
+  const getSupabaseSyncToken = async (user) => {
+    if (!user || typeof user.getIdToken !== "function") {
+      return null;
+    }
+
+    try {
+      return await user.getIdToken();
+    } catch (error) {
+      return null;
+    }
+  };
+
+  const postSupabaseSyncAction = async (user, action, payload) => {
+    if (!SUPABASE_LIVE_SYNC_ACTIVE) {
+      return false;
+    }
+
+    const idToken = await getSupabaseSyncToken(user);
+
+    if (!idToken) {
+      return false;
+    }
+
+    try {
+      const response = await fetch(SUPABASE_SYNC_FUNCTION_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + idToken,
+        },
+        body: JSON.stringify({
+          action,
+          ...payload,
+        }),
+      });
+
+      return response.ok;
+    } catch (error) {
+      console.error("Supabase live sync failed:", error);
+      return false;
+    }
+  };
+
+  const syncSupabaseProfileRecord = async (user, snapshot) => {
+    if (
+      !snapshot ||
+      snapshot.isAnonymous ||
+      typeof snapshot.uid !== "string" ||
+      !snapshot.uid ||
+      typeof snapshot.profileId !== "number" ||
+      snapshot.profileId <= 0
+    ) {
+      return false;
+    }
+
+    return postSupabaseSyncAction(user, "upsert_profile", {
+      profile: {
+        firebaseUid: snapshot.uid,
+        profileId: snapshot.profileId,
+        login: typeof snapshot.login === "string" ? snapshot.login : null,
+        displayName: typeof snapshot.displayName === "string" ? snapshot.displayName : null,
+        photoURL: typeof snapshot.photoURL === "string" ? snapshot.photoURL : null,
+        avatarPath: typeof snapshot.avatarPath === "string" ? snapshot.avatarPath : null,
+        avatarType: typeof snapshot.avatarType === "string" ? snapshot.avatarType : null,
+        avatarSize: normalizeSupabaseInteger(snapshot.avatarSize),
+        roles: normalizeSupabaseTextArray(snapshot.roles),
+        isBanned: snapshot.isBanned === true,
+        bannedAt: typeof snapshot.bannedAt === "string" ? snapshot.bannedAt : null,
+        emailVerified: snapshot.emailVerified === true,
+        verificationRequired: snapshot.verificationRequired === true,
+        createdAt: typeof snapshot.creationTime === "string" ? snapshot.creationTime : null,
+        lastSignInTime:
+          typeof snapshot.lastSignInTime === "string" ? snapshot.lastSignInTime : null,
+      },
+    });
+  };
+
+  const syncSupabaseCommentRecord = async (user, comment) => {
+    if (
+      !comment ||
+      typeof comment.id !== "string" ||
+      !comment.id ||
+      typeof comment.profileId !== "number" ||
+      comment.profileId <= 0 ||
+      typeof comment.authorUid !== "string" ||
+      !comment.authorUid
+    ) {
+      return false;
+    }
+
+    return postSupabaseSyncAction(user, "upsert_comment", {
+      comment: {
+        id: comment.id,
+        profileId: comment.profileId,
+        authorProfileId:
+          typeof comment.authorProfileId === "number" ? comment.authorProfileId : null,
+        authorUid: comment.authorUid,
+        authorName: typeof comment.authorName === "string" ? comment.authorName : null,
+        authorPhotoURL:
+          typeof comment.authorPhotoURL === "string" ? comment.authorPhotoURL : null,
+        authorAccentRole:
+          typeof comment.authorAccentRole === "string" ? comment.authorAccentRole : null,
+        message: typeof comment.message === "string" ? comment.message : "",
+        mediaURL: typeof comment.mediaURL === "string" ? comment.mediaURL : null,
+        mediaType: typeof comment.mediaType === "string" ? comment.mediaType : null,
+        mediaPath: typeof comment.mediaPath === "string" ? comment.mediaPath : null,
+        mediaSize: normalizeSupabaseInteger(comment.mediaSize),
+        createdAt: typeof comment.createdAt === "string" ? comment.createdAt : null,
+        updatedAt: typeof comment.updatedAt === "string" ? comment.updatedAt : null,
+      },
+    });
+  };
+
+  const syncSupabaseCommentRemoval = async (user, commentId) => {
+    if (typeof commentId !== "string" || !commentId.trim()) {
+      return false;
+    }
+
+    return postSupabaseSyncAction(user, "delete_comment", {
+      commentId: commentId.trim(),
+    });
   };
 
   const mapSupabasePresenceRow = (row) =>
@@ -2422,8 +2578,9 @@
     const resolveUserSnapshot = async (user, options = {}) => {
       try {
         const details = await ensureProfileRecord(user, options);
-
-        return publishUserSnapshot(toUserSnapshot(user, details));
+        const snapshot = publishUserSnapshot(toUserSnapshot(user, details));
+        void syncSupabaseProfileRecord(user, snapshot);
+        return snapshot;
       } catch (error) {
         if (!isPermissionDeniedError(error)) {
           throw error;
@@ -2439,7 +2596,9 @@
         });
 
         if (storedDetails) {
-          return publishUserSnapshot(toUserSnapshot(user, storedDetails));
+          const storedSnapshot = publishUserSnapshot(toUserSnapshot(user, storedDetails));
+          void syncSupabaseProfileRecord(user, storedSnapshot);
+          return storedSnapshot;
         }
 
         if (!user.isAnonymous) {
@@ -2557,6 +2716,7 @@
           loginLower: usernameDetails.loginLower,
         })
       );
+      void syncSupabaseProfileRecord(user, snapshot);
 
       return snapshot;
     };
@@ -2630,12 +2790,14 @@
 
       await syncAuthDisplayNameIfNeeded();
 
-      return publishUserSnapshot(
+      const snapshot = publishUserSnapshot(
         toUserSnapshot(user, {
           ...existingData,
           displayName: sanitizedDisplayName,
         })
       );
+      void syncSupabaseProfileRecord(user, snapshot);
+      return snapshot;
     };
 
     const completeGoogleAccount = async ({ login, displayName, password }) => {
@@ -3259,7 +3421,9 @@
         }
       }
 
-      return toStoredProfileComment(commentRef.id, displayCommentPayload);
+      const createdComment = toStoredProfileComment(commentRef.id, displayCommentPayload);
+      void syncSupabaseCommentRecord(user, createdComment);
+      return createdComment;
     };
 
     const deleteProfileComment = async (commentId) => {
@@ -3324,6 +3488,7 @@
         throw error;
       }
 
+      void syncSupabaseCommentRemoval(user, comment.id);
       return comment.id;
     };
 
@@ -3428,7 +3593,7 @@
         throw error;
       }
 
-      return toStoredProfileComment(comment.id, {
+      const updatedComment = toStoredProfileComment(comment.id, {
         ...comment,
         message: normalizedMessage,
         mediaURL: finalMediaURL,
@@ -3437,6 +3602,8 @@
         mediaSize: finalMediaSize,
         updatedAt,
       });
+      void syncSupabaseCommentRecord(user, updatedComment);
+      return updatedComment;
     };
 
     const updateAvatar = async (file) => {
@@ -3517,7 +3684,7 @@
         );
       }
 
-      return publishUserSnapshot(
+      const snapshot = publishUserSnapshot(
         toUserSnapshot(user, {
           ...currentDetails,
           photoURL,
@@ -3526,6 +3693,8 @@
           avatarSize: avatarUpload.avatarSize ?? null,
         })
       );
+      void syncSupabaseProfileRecord(user, snapshot);
+      return snapshot;
     };
 
     const deleteAvatar = async () => {
@@ -3598,7 +3767,7 @@
         ? buildUserDetailsFromSnapshot(user, window.sakuraCurrentUserSnapshot)
         : buildFallbackUserDetails(user);
 
-      return publishUserSnapshot(
+      const snapshot = publishUserSnapshot(
         toUserSnapshot(user, {
           ...currentDetails,
           photoURL: null,
@@ -3607,6 +3776,8 @@
           avatarSize: null,
         })
       );
+      void syncSupabaseProfileRecord(user, snapshot);
+      return snapshot;
     };
     const adminUpdateProfileDisplayName = async (profileId, nextDisplayName) => {
       const { user, actorSnapshot } = await ensureRootActorSnapshot();
