@@ -105,6 +105,7 @@
   const PRESENCE_TAB_REGISTRY_STORAGE_KEY = "sakura-presence-tabs-v1";
   const PRESENCE_TAB_REGISTRY_MAX_AGE_MS =
     PRESENCE_ONLINE_WINDOW_MS + PRESENCE_HEARTBEAT_INTERVAL_MS;
+  const readCurrentLocationPath = () => window.location.pathname + window.location.search;
   const DISPLAY_NAME_MAX_LENGTH = 48;
   const USER_UPDATE_EVENT = "sakura-user-update";
   const AUTH_ERROR_EVENT = "sakura-auth-error";
@@ -1364,7 +1365,7 @@
         user.metadata.lastSignInTime ?? null
       ),
       visitHistory: [],
-      presence: normalizePresence(null, window.location.pathname),
+      presence: normalizePresence(null, readCurrentLocationPath()),
     };
   };
 
@@ -1393,7 +1394,7 @@
       ? details.loginHistory
       : buildLoginHistory([], user.metadata.creationTime ?? null, user.metadata.lastSignInTime ?? null),
     visitHistory: normalizeVisitHistory(details.visitHistory),
-    presence: normalizePresence(details.presence, window.location.pathname),
+    presence: normalizePresence(details.presence, readCurrentLocationPath()),
   });
 
   const toUserSnapshot = (user, details = {}) =>
@@ -1425,7 +1426,7 @@
           lastSignInTime: user.metadata.lastSignInTime ?? null,
           loginHistory: Array.isArray(details.loginHistory) ? details.loginHistory : [],
           visitHistory: normalizeVisitHistory(details.visitHistory),
-          presence: normalizePresence(details.presence, window.location.pathname)
+          presence: normalizePresence(details.presence, readCurrentLocationPath())
         }
       : null;
 
@@ -1975,8 +1976,8 @@
         visitHistory: normalizeVisitHistory(payload.visitHistory),
         presence:
           payload.presence && typeof payload.presence === "object"
-            ? normalizePresence(payload.presence, window.location.pathname)
-            : normalizePresence(null, window.location.pathname),
+            ? normalizePresence(payload.presence, readCurrentLocationPath())
+            : normalizePresence(null, readCurrentLocationPath()),
       };
     } catch (error) {
       return null;
@@ -2523,8 +2524,8 @@
             : normalizeVisitHistory(fallbackSnapshot?.visitHistory),
         presence:
           payload.presence && typeof payload.presence === "object"
-            ? normalizePresence(payload.presence, window.location.pathname)
-            : normalizePresence(fallbackSnapshot?.presence, window.location.pathname),
+            ? normalizePresence(payload.presence, readCurrentLocationPath())
+            : normalizePresence(fallbackSnapshot?.presence, readCurrentLocationPath()),
       })
     );
   };
@@ -3219,7 +3220,7 @@
 
               if (bridgedUser && !bridgedUser.isAnonymous) {
                 await syncPresence(bridgedUser, {
-                  path: window.location.pathname,
+                  path: readCurrentLocationPath(),
                   source: source ?? "login",
                   forceVisit: true,
                 });
@@ -3250,7 +3251,7 @@
 
       if (!skipPresence) {
         await syncPresence(bridgedUser, {
-          path: window.location.pathname,
+          path: readCurrentLocationPath(),
           source: source ?? "login",
           forceVisit: true,
         });
@@ -4069,7 +4070,7 @@
             ? currentSupabaseDetails.loginHistory
             : buildLoginHistory([], user.metadata.creationTime ?? null, user.metadata.lastSignInTime ?? null),
           visitHistory: normalizeVisitHistory(currentSupabaseDetails.visitHistory),
-          presence: normalizePresence(currentSupabaseDetails.presence, window.location.pathname),
+          presence: normalizePresence(currentSupabaseDetails.presence, readCurrentLocationPath()),
         };
       }
 
@@ -4099,7 +4100,7 @@
         user.metadata.lastSignInTime ?? null
       );
       const visitHistory = normalizeVisitHistory(existingData?.visitHistory);
-      const presence = normalizePresence(existingData?.presence, window.location.pathname);
+      const presence = normalizePresence(existingData?.presence, readCurrentLocationPath());
       const roles = normalizeRoles(existingData?.roles);
       const storedEmailVerified =
         typeof existingData?.emailVerified === "boolean" ? existingData.emailVerified : null;
@@ -4253,7 +4254,7 @@
         providerIds: Array.isArray(finalData?.providerIds) ? finalData.providerIds : providerIds,
         loginHistory: Array.isArray(finalData?.loginHistory) ? finalData.loginHistory : loginHistory,
         visitHistory: normalizeVisitHistory(finalData?.visitHistory ?? visitHistory),
-        presence: normalizePresence(finalData?.presence, window.location.pathname),
+        presence: normalizePresence(finalData?.presence, readCurrentLocationPath()),
         profileId: typeof finalData?.profileId === "number" ? finalData.profileId : nextProfileId,
       };
     };
@@ -4669,7 +4670,7 @@
       const allowedSnapshot = await enforceActiveSessionNotBanned(snapshot);
 
       await syncPresence(user, {
-        path: window.location.pathname,
+        path: readCurrentLocationPath(),
         source: "google-complete",
         forceVisit: true,
       });
@@ -4684,7 +4685,7 @@
         });
         const allowedSnapshot = await enforceActiveSessionNotBanned(snapshot);
         await syncPresence(user, {
-          path: window.location.pathname,
+          path: readCurrentLocationPath(),
           source: "google-login",
           forceVisit: true,
         });
@@ -6908,7 +6909,7 @@
           }
 
           await syncPresence(credentials.user, {
-            path: window.location.pathname,
+            path: readCurrentLocationPath(),
             source: "register",
             forceVisit: true,
           });
@@ -6974,7 +6975,7 @@
           const snapshot = await resolveUserSnapshot(credentials.user);
           const allowedSnapshot = await enforceActiveSessionNotBanned(snapshot);
           await syncPresence(credentials.user, {
-            path: window.location.pathname,
+            path: readCurrentLocationPath(),
             source: "login",
             forceVisit: true,
           });

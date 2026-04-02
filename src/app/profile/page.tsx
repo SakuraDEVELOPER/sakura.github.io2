@@ -161,6 +161,7 @@ const PRESENCE_DIRTY_EVENT = "sakura-presence-dirty";
 const PROFILE_PATH_STORAGE_KEY = "sakura-profile-path";
 const CURRENT_PROFILE_ID_STORAGE_KEY = "sakura-current-profile-id";
 const PROFILE_BUILD_MARKER = "role-colors-v61";
+const PROFILE_QUERY_PARAM = "profile";
 const PROFILE_THEME_TITLE_BY_PROFILE_ID = new Map<number, string>([
   [1, "Pixies — Where Is My Mind"],
   [2, "Face — Forever Young"],
@@ -172,6 +173,7 @@ const COMMENT_MENTION_PATTERN = /@([A-Za-z\u0400-\u04FF0-9._-]{3,24})/g;
 const COMMENT_MENTION_DRAFT_PATTERN = /(^|[\s([{"'`])@([A-Za-z\u0400-\u04FF0-9._-]{2,24})$/;
 const COMMENT_MENTION_TOKEN_CHARACTER_PATTERN = /[A-Za-z\u0400-\u04FF0-9._-]/;
 const repoBasePath = "/sakura.github.io";
+const profileBasePath = `${repoBasePath}/profile`;
 const PROFILE_THEME_SONG_BY_PROFILE_ID = new Map<number, string>([
   [1, `${repoBasePath}/music/where-is-my-mind.mp3`],
   [2, `${repoBasePath}/music/Face-forever-young.mp3`],
@@ -186,26 +188,65 @@ const restoreProfilePathScript = `
     try {
       var fallbackPath = window.sessionStorage.getItem(${JSON.stringify(PROFILE_PATH_STORAGE_KEY)});
       var currentProfileId = window.sessionStorage.getItem(${JSON.stringify(CURRENT_PROFILE_ID_STORAGE_KEY)});
-      var currentPath = window.location.pathname;
-      var profilePath = ${JSON.stringify(repoBasePath + "/profile")};
-      var profilePattern = new RegExp("^" + ${JSON.stringify(repoBasePath)} + "/profile/\\\\d+$");
+      var profilePath = ${JSON.stringify(profileBasePath)};
+      var url = new URL(window.location.href);
+      var nextPath = "";
 
-      if (currentPath === profilePath) {
-        if (fallbackPath && profilePattern.test(fallbackPath)) {
-          window.history.replaceState(null, "", fallbackPath);
-          return;
+      var parseProfilePath = function (value) {
+        if (!value) {
+          return null;
         }
 
-        if (currentProfileId && /^\\d+$/.test(currentProfileId)) {
-          window.history.replaceState(null, "", profilePath + "/" + currentProfileId);
+        try {
+          var parsedUrl = new URL(value, window.location.origin);
+          var searchProfileId = parsedUrl.searchParams.get(${JSON.stringify(PROFILE_QUERY_PARAM)});
+
+          if (parsedUrl.pathname === profilePath && /^\\d+$/.test(searchProfileId || "")) {
+            return searchProfileId;
+          }
+
+          var legacyMatch = parsedUrl.pathname.match(/\\/profile\\/(\\d+)$/);
+          return legacyMatch ? legacyMatch[1] : null;
+        } catch (error) {
+          return null;
         }
+      };
+
+      if (url.pathname !== profilePath || url.searchParams.get(${JSON.stringify(PROFILE_QUERY_PARAM)})) {
+        return;
+      }
+
+      var fallbackProfileId = parseProfilePath(fallbackPath);
+
+      if (fallbackProfileId) {
+        nextPath = profilePath + "?profile=" + fallbackProfileId;
+      } else if (currentProfileId && /^\\d+$/.test(currentProfileId)) {
+        nextPath = profilePath + "?profile=" + currentProfileId;
+      }
+
+      if (nextPath) {
+        window.history.replaceState(null, "", nextPath);
       }
     } catch (error) {}
   })();
 `;
 
 const getWindowState = () => window as RuntimeWindow;
-const profilePath = (id: number) => `${repoBasePath}/profile/${id}`;
+const profilePath = (id: number) => `${profileBasePath}?${PROFILE_QUERY_PARAM}=${id}`;
+const readCurrentProfileLocation = () =>
+  typeof window === "undefined" ? profileBasePath : `${window.location.pathname}${window.location.search}`;
+const toRelativeLocationPath = (value: string) => {
+  try {
+    const parsedUrl = new URL(
+      value,
+      typeof window !== "undefined" ? window.location.origin : "https://example.com"
+    );
+
+    return `${parsedUrl.pathname}${parsedUrl.search}`;
+  } catch {
+    return value;
+  }
+};
 const getErrorCode = (error: unknown) =>
   typeof error === "object" && error !== null && "code" in error
     ? String((error as { code?: unknown }).code)
@@ -447,8 +488,26 @@ const withAvatarActionTimeout = <T,>(promise: Promise<T>) =>
     }),
   ]);
 const parseProfileId = (path: string | null) => {
-  if (!path || !path.startsWith(`${repoBasePath}/profile/`)) return null;
-  const raw = path.slice(`${repoBasePath}/profile/`.length);
+  if (!path) return null;
+
+  const normalizedPath = toRelativeLocationPath(path.trim());
+
+  if (normalizedPath.startsWith(`${profileBasePath}?`)) {
+    const params = new URLSearchParams(normalizedPath.slice(profileBasePath.length + 1));
+    const profileId = params.get(PROFILE_QUERY_PARAM);
+
+    return profileId && /^\d+$/.test(profileId) ? Number(profileId) : null;
+  }
+
+  if (normalizedPath === profileBasePath) {
+    return null;
+  }
+
+  if (!normalizedPath.startsWith(`${profileBasePath}/`)) {
+    return null;
+  }
+
+  const raw = normalizedPath.slice(`${profileBasePath}/`.length);
   return /^\d+$/.test(raw) ? Number(raw) : null;
 };
 const getStoredCurrentProfileId = () => {
@@ -1067,7 +1126,7 @@ const getInitialRequestedProfileId = () => {
   if (typeof window === "undefined") return null;
   const fallback = window.sessionStorage.getItem(PROFILE_PATH_STORAGE_KEY);
   if (fallback) window.sessionStorage.removeItem(PROFILE_PATH_STORAGE_KEY);
-  return parseProfileId(window.location.pathname) ?? parseProfileId(fallback);
+  return parseProfileId(readCurrentProfileLocation()) ?? parseProfileId(fallback);
 };
 const getClientCurrentUser = () =>
   typeof window === "undefined"
@@ -1100,7 +1159,7 @@ const getClientBootstrap = () => {
   if (
     typeof window !== "undefined" &&
     requestedProfileId !== null &&
-    window.location.pathname !== profilePath(requestedProfileId)
+    readCurrentProfileLocation() !== profilePath(requestedProfileId)
   ) {
     window.history.replaceState(null, "", profilePath(requestedProfileId));
   }
@@ -1109,7 +1168,7 @@ const getClientBootstrap = () => {
     typeof window !== "undefined" &&
     requestedProfileId === null &&
     currentUserProfileId !== null &&
-    window.location.pathname === `${repoBasePath}/profile`
+    readCurrentProfileLocation() === profileBasePath
   ) {
     window.history.replaceState(null, "", profilePath(currentUserProfileId));
   }
@@ -1361,7 +1420,11 @@ export default function ProfilePage() {
       setProfile(visibleCurrentUser);
       setProfileError(null);
       setIsProfileLoading(false);
-      if (visibleCurrentUser?.profileId && requestedId === null && window.location.pathname !== profilePath(visibleCurrentUser.profileId)) {
+      if (
+        visibleCurrentUser?.profileId &&
+        requestedId === null &&
+        readCurrentProfileLocation() !== profilePath(visibleCurrentUser.profileId)
+      ) {
         window.history.replaceState(null, "", profilePath(visibleCurrentUser.profileId));
       }
       return;
@@ -1378,7 +1441,9 @@ export default function ProfilePage() {
           setProfileError(`Profile #${requestedId} was not found.`);
           return;
         }
-        if (window.location.pathname !== profilePath(requestedId)) window.history.replaceState(null, "", profilePath(requestedId));
+        if (readCurrentProfileLocation() !== profilePath(requestedId)) {
+          window.history.replaceState(null, "", profilePath(requestedId));
+        }
       })
       .catch((error) => {
         setProfile(null);
@@ -1402,15 +1467,42 @@ export default function ProfilePage() {
     }
   }, [deletedProfileNotice, profile, requestedProfileId]);
 
+  const isCurrentUserEmailVerificationLocked =
+    !currentUser?.isAnonymous &&
+    Boolean(currentUser?.email) &&
+    !currentUser?.providerIds.includes("google.com") &&
+    currentUser?.emailVerified === false &&
+    currentUser?.verificationRequired !== false;
+
   useEffect(() => {
     if (
+      typeof window === "undefined" ||
+      !authReady ||
+      !authStateSettled ||
       !currentUser?.uid ||
       currentUser.isAnonymous ||
-      isEmailVerificationLockedForProfile(currentUser) ||
+      isCurrentUserEmailVerificationLocked ||
       !getWindowState().sakuraFirebaseAuth
     ) return;
-    getWindowState().sakuraFirebaseAuth?.syncPresence({ path: window.location.pathname, source: "profile-view", forceVisit: true }).catch(() => {});
-  }, [currentUser?.uid, currentUser?.isAnonymous]);
+    getWindowState()
+      .sakuraFirebaseAuth?.syncPresence({
+        path: readCurrentProfileLocation(),
+        source: "profile-view",
+        forceVisit: true,
+      })
+      .catch(() => {});
+  }, [
+    authReady,
+    authStateSettled,
+    requestedProfileId,
+    currentUser?.uid,
+    currentUser?.isAnonymous,
+    currentUser?.email,
+    currentUser?.emailVerified,
+    currentUser?.verificationRequired,
+    currentUser?.providerIds,
+    isCurrentUserEmailVerificationLocked,
+  ]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !authReady) {

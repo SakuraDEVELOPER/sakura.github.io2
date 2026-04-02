@@ -63,6 +63,7 @@ const supabaseSyncFunctionUrl = (() => {
   }
 })();
 const supabaseLiveSyncActive = Boolean(supabaseLiveSyncEnabled && supabaseSyncFunctionUrl);
+const readCurrentLocationPath = () => `${window.location.pathname}${window.location.search}`;
 
 export const createFirebasePresenceRuntime = (context: FirebasePresenceRuntimeContext) => {
   const {
@@ -200,6 +201,7 @@ export const createFirebasePresenceRuntime = (context: FirebasePresenceRuntimeCo
     try {
       const response = await fetch(buildSupabaseRpcUrl(functionName), {
         method: "POST",
+        keepalive: true,
         headers: {
           "Content-Type": "application/json",
           apikey: supabaseAnonKey,
@@ -247,6 +249,7 @@ export const createFirebasePresenceRuntime = (context: FirebasePresenceRuntimeCo
     try {
       const response = await fetch(supabaseSyncFunctionUrl, {
         method: "POST",
+        keepalive: true,
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${idToken}`,
@@ -588,7 +591,7 @@ export const createFirebasePresenceRuntime = (context: FirebasePresenceRuntimeCo
           visitHistory: Array.isArray(currentSnapshot?.visitHistory)
             ? currentSnapshot.visitHistory
             : [],
-          presence: normalizePresence(currentSnapshot?.presence, window.location.pathname),
+          presence: normalizePresence(currentSnapshot?.presence, readCurrentLocationPath()),
         });
       }
 
@@ -643,7 +646,7 @@ export const createFirebasePresenceRuntime = (context: FirebasePresenceRuntimeCo
       const currentPath =
         typeof options.path === "string" && options.path
           ? options.path
-          : window.location.pathname;
+          : readCurrentLocationPath();
       const forcedVisibility =
         options.visibility === "hidden"
           ? false
@@ -824,7 +827,7 @@ export const createFirebasePresenceRuntime = (context: FirebasePresenceRuntimeCo
 
     const syncCurrentPresence = (source: string, forceVisit = false, visibility?: "visible" | "hidden") =>
       syncPresence(user, {
-        path: window.location.pathname,
+        path: readCurrentLocationPath(),
         source,
         forceVisit,
         visibility,

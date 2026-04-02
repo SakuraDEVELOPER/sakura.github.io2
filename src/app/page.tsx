@@ -582,19 +582,21 @@ function buildUserInitials(user: AuthUserSnapshot) {
 }
 
 function profileHref(profileId: number | null | undefined) {
+  const profileBasePath = `${repoBasePath}/profile`;
+
   if (typeof profileId === "number" && profileId > 0) {
-    return `${repoBasePath}/profile/${profileId}`;
+    return `${profileBasePath}?profile=${profileId}`;
   }
 
   if (typeof window !== "undefined") {
     const storedProfileId = window.sessionStorage.getItem(CURRENT_PROFILE_ID_STORAGE_KEY);
 
     if (storedProfileId && /^\d+$/.test(storedProfileId)) {
-      return `${repoBasePath}/profile/${storedProfileId}`;
+      return `${profileBasePath}?profile=${storedProfileId}`;
     }
   }
 
-  return `${repoBasePath}/profile`;
+  return profileBasePath;
 }
 
 function scrollToSection(sectionId: string) {

@@ -1,13 +1,15 @@
 const PROFILE_PATH_STORAGE_KEY = "sakura-profile-path";
 const repoBasePath = "/sakura.github.io";
+const profileBasePath = `${repoBasePath}/profile`;
 const redirectScript = `
   (function () {
-    var profilePattern = new RegExp("^" + ${JSON.stringify(repoBasePath)} + "/profile/\\\\d+$");
-    var currentPath = window.location.pathname;
+    var currentUrl = new URL(window.location.href);
+    var legacyProfileMatch = currentUrl.pathname.match(/\\/profile\\/(\\d+)$/);
 
-    if (profilePattern.test(currentPath)) {
-      window.sessionStorage.setItem(${JSON.stringify(PROFILE_PATH_STORAGE_KEY)}, currentPath);
-      window.location.replace(${JSON.stringify(repoBasePath + "/profile")});
+    if (legacyProfileMatch) {
+      var nextProfilePath = ${JSON.stringify(profileBasePath)} + "?profile=" + legacyProfileMatch[1];
+      window.sessionStorage.setItem(${JSON.stringify(PROFILE_PATH_STORAGE_KEY)}, nextProfilePath);
+      window.location.replace(nextProfilePath);
       return;
     }
 
