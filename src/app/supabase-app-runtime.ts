@@ -2275,17 +2275,6 @@ export const startSupabaseAppRuntime = async () => {
         );
 
         const optimisticSnapshot = publishCurrentUserSnapshotFromPayload(response);
-
-        void client.auth
-          .updateUser({
-            data: {
-              display_name: sanitizedDisplayName,
-            },
-          })
-          .catch(() => null);
-
-        void refreshAndTrackCurrentUser({ forceFresh: true }).catch(() => null);
-
         return optimisticSnapshot ?? await refreshAndTrackCurrentUser({ forceFresh: true });
       },
       updateUsername: async (username, currentPassword) => {
@@ -2306,18 +2295,6 @@ export const startSupabaseAppRuntime = async () => {
         );
 
         const optimisticSnapshot = publishCurrentUserSnapshotFromPayload(response);
-
-        void client.auth
-          .updateUser({
-            data: {
-              login: sanitizedLogin,
-              requested_login: sanitizedLogin,
-            },
-          })
-          .catch(() => null);
-
-        void refreshAndTrackCurrentUser({ forceFresh: true }).catch(() => null);
-
         return optimisticSnapshot ?? await refreshAndTrackCurrentUser({ forceFresh: true });
       },
       adminUpdateProfileDisplayName: async (profileId, displayName) => {
