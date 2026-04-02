@@ -1083,6 +1083,7 @@ const callSupabaseAuthenticatedRpc = async <TResponse>(
   functionName: string,
   payload: Record<string, unknown>,
   fallbackMessage: string,
+  options: { forceFresh?: boolean } = {},
 ) => {
   const accessToken = await getSupabaseAccessToken();
 
@@ -1092,6 +1093,7 @@ const callSupabaseAuthenticatedRpc = async <TResponse>(
 
   const response = await fetch(buildSupabaseRpcUrl(functionName), {
     method: "POST",
+    cache: options.forceFresh ? "no-store" : "default",
     headers: {
       "Content-Type": "application/json",
       apikey: supabaseAnonKey,
@@ -1099,6 +1101,12 @@ const callSupabaseAuthenticatedRpc = async <TResponse>(
       "Accept-Profile": "public",
       "Content-Profile": "public",
       Accept: "application/json",
+      ...(options.forceFresh
+        ? {
+            "Cache-Control": "no-cache, no-store, max-age=0",
+            Pragma: "no-cache",
+          }
+        : {}),
     },
     body: JSON.stringify(payload),
   });
@@ -1253,7 +1261,9 @@ const buildFallbackSnapshotFromUser = (
   };
 };
 
-const loadCurrentAuthProfileFromRpc = async () => {
+const loadCurrentAuthProfileFromRpc = async (
+  options: { forceFresh?: boolean } = {},
+) => {
   const currentSession = await ensureSupabaseSession();
   const currentUser = currentSession?.user ?? null;
 
@@ -1266,6 +1276,7 @@ const loadCurrentAuthProfileFromRpc = async () => {
       "get_current_auth_profile_rpc",
       {},
       "Profile record could not be loaded.",
+      options,
     );
 
     return mapSupabaseProfilePayloadToSnapshot(response, {
@@ -1280,9 +1291,10 @@ const loadCurrentAuthProfileFromRpc = async () => {
 const loadCurrentAuthProfileFromRpcWithRetry = async (
   attempts = 5,
   delayMs = 180,
+  options: { forceFresh?: boolean } = {},
 ) => {
   for (let index = 0; index < attempts; index += 1) {
-    const snapshot = await loadCurrentAuthProfileFromRpc();
+    const snapshot = await loadCurrentAuthProfileFromRpc(options);
 
     if (snapshot) {
       return snapshot;
@@ -1380,6 +1392,7 @@ const refreshCurrentUserSnapshot = async (
   let snapshot = await loadCurrentAuthProfileFromRpcWithRetry(
     options.forceFresh ? 6 : 4,
     options.forceFresh ? 160 : 120,
+    { forceFresh: options.forceFresh },
   );
 
   if (!snapshot) {
@@ -1888,6 +1901,7 @@ export const startSupabaseAppRuntime = async () => {
     const refreshAndTrackCurrentUser = async (
       options: {
         verificationEmailSent?: boolean;
+        forceFresh?: boolean;
         fallbackPresence?: PresenceSnapshot | null;
       } = {},
     ) => {
@@ -1903,6 +1917,21 @@ export const startSupabaseAppRuntime = async () => {
 
       clearAuthError();
       return snapshot;
+    };
+
+    const publishCurrentUserSnapshotFromPayload = (
+      payload: Record<string, unknown> | null,
+      options: {
+        verificationEmailSent?: boolean;
+      } = {},
+    ) => {
+      const snapshot = mapSupabaseProfilePayloadToSnapshot(payload, {
+        fallbackUser: runtime.sakuraSupabaseCurrentSession?.user ?? null,
+        verificationEmailSent: options.verificationEmailSent,
+        fallbackPresence: runtime.sakuraCurrentUserSnapshot?.presence ?? null,
+      });
+
+      return snapshot ? publishUserSnapshot(snapshot) : null;
     };
 
     const bridge: AppAuthBridge = {
@@ -2085,7 +2114,7 @@ export const startSupabaseAppRuntime = async () => {
           !currentSnapshot.isAnonymous &&
           currentSnapshot.profileId === profileId
         ) {
-          return await refreshAndTrackCurrentUser();
+          return await refreshAndTrackCurrentUser({ forceFresh: true });
         }
 
         return await getPublicProfileById(profileId, { forceFresh: true });
@@ -2156,12 +2185,13 @@ export const startSupabaseAppRuntime = async () => {
           throw createAppError("display-name/empty", "Enter a profile name.");
         }
 
-        await callSupabaseAuthenticatedRpc(
+        const response = await callSupabaseAuthenticatedRpc<Record<string, unknown>>(
           "update_current_profile_identity_rpc",
           {
             target_display_name: sanitizedDisplayName,
           },
           "Profile name could not be saved.",
+          { forceFresh: true },
         );
 
         await client.auth
@@ -2172,7 +2202,11 @@ export const startSupabaseAppRuntime = async () => {
           })
           .catch(() => null);
 
-        return await refreshAndTrackCurrentUser();
+        const optimisticSnapshot = publishCurrentUserSnapshotFromPayload(response);
+
+        void refreshAndTrackCurrentUser({ forceFresh: true }).catch(() => null);
+
+        return optimisticSnapshot ?? await refreshAndTrackCurrentUser({ forceFresh: true });
       },
       updateUsername: async (username, currentPassword) => {
         const sanitizedLogin = sanitizeLogin(username);
@@ -2182,12 +2216,13 @@ export const startSupabaseAppRuntime = async () => {
         }
 
         await ensureCurrentPassword(currentPassword);
-        await callSupabaseAuthenticatedRpc(
+        const response = await callSupabaseAuthenticatedRpc<Record<string, unknown>>(
           "update_current_profile_identity_rpc",
           {
             target_login: sanitizedLogin,
           },
           "Login could not be saved.",
+          { forceFresh: true },
         );
 
         await client.auth
@@ -2199,7 +2234,11 @@ export const startSupabaseAppRuntime = async () => {
           })
           .catch(() => null);
 
-        return await refreshAndTrackCurrentUser();
+        const optimisticSnapshot = publishCurrentUserSnapshotFromPayload(response);
+
+        void refreshAndTrackCurrentUser({ forceFresh: true }).catch(() => null);
+
+        return optimisticSnapshot ?? await refreshAndTrackCurrentUser({ forceFresh: true });
       },
       adminUpdateProfileDisplayName: async (profileId, displayName) => {
         const sanitizedDisplayName = sanitizeDisplayName(displayName);
@@ -2208,16 +2247,23 @@ export const startSupabaseAppRuntime = async () => {
           throw createAppError("display-name/empty", "Enter a profile name.");
         }
 
-        await callSupabaseAuthenticatedRpc(
+        const response = await callSupabaseAuthenticatedRpc<Record<string, unknown>>(
           "admin_update_profile_identity_rpc",
           {
             target_profile_id: profileId,
             target_display_name: sanitizedDisplayName,
           },
           "Profile name could not be saved.",
+          { forceFresh: true },
         );
 
-        return await getPublicProfileById(profileId, { forceFresh: true });
+        return (
+          mapSupabaseProfilePayloadToSnapshot(response, {
+            fallbackPresence:
+              readCacheEntry(runtimeProfileByIdCache, String(profileId))?.presence ?? null,
+          }) ??
+          await getPublicProfileById(profileId, { forceFresh: true })
+        );
       },
       adminUpdateProfileLogin: async (profileId, login) => {
         const sanitizedLogin = sanitizeLogin(login);
@@ -2226,16 +2272,23 @@ export const startSupabaseAppRuntime = async () => {
           throw createAppError("auth/invalid-login", "Enter a valid login.");
         }
 
-        await callSupabaseAuthenticatedRpc(
+        const response = await callSupabaseAuthenticatedRpc<Record<string, unknown>>(
           "admin_update_profile_identity_rpc",
           {
             target_profile_id: profileId,
             target_login: sanitizedLogin,
           },
           "Login could not be saved.",
+          { forceFresh: true },
         );
 
-        return await getPublicProfileById(profileId, { forceFresh: true });
+        return (
+          mapSupabaseProfilePayloadToSnapshot(response, {
+            fallbackPresence:
+              readCacheEntry(runtimeProfileByIdCache, String(profileId))?.presence ?? null,
+          }) ??
+          await getPublicProfileById(profileId, { forceFresh: true })
+        );
       },
       adminSetProfileBan: async (profileId, isBanned) => {
         await callSupabaseAuthenticatedRpc(
