@@ -1,4 +1,4 @@
-﻿// app/page.tsx
+// app/page.tsx
 "use client";
 /* eslint-disable @next/next/no-img-element */
 
@@ -167,20 +167,20 @@ declare global {
     loginWithGoogle?: () => Promise<AuthUserSnapshot | null>;
     sakuraCurrentUserSnapshot?: AuthUserSnapshot | null;
     sakuraAuthStateSettled?: boolean;
-    sakuraStartFirebaseAuth?: () => Promise<unknown> | unknown;
-    sakuraFirebaseAuth?: FirebaseAuthBridge;
-    sakuraFirebaseAuthError?: string;
+    sakuraStartSupabaseApp?: () => Promise<unknown> | unknown;
+    sakuraAppAuth?: FirebaseAuthBridge;
+    sakuraAppAuthError?: string | null;
     sakuraStartSupabaseAuth?: () => Promise<unknown> | unknown;
     sakuraSupabaseAuth?: SupabaseAuthBridge;
   }
 }
 
-const requestFirebaseAuthBoot = () => {
+const requestAppAuthBoot = () => {
   if (typeof window === "undefined") {
     return;
   }
 
-  void window.sakuraStartFirebaseAuth?.();
+  void window.sakuraStartSupabaseApp?.();
 };
 
 const requestSupabaseAuthBoot = () => {
@@ -602,7 +602,7 @@ function profileHref(profileId: number | null | undefined) {
 
 function SakuraBackground() {
   /* const handleGoogleLogin = async () => {
-    if (!window.sakuraFirebaseAuth) {
+    if (!window.sakuraAppAuth) {
       setSubmitError(
         authLoadError ?? "Supabase Auth еще не готов. Подождите пару секунд и попробуйте снова."
       );
@@ -614,7 +614,7 @@ function SakuraBackground() {
 
     try {
       let snapshot: AuthUserSnapshot | null;
-      const snapshot = await window.sakuraFirebaseAuth.loginWithGoogle();
+      const snapshot = await window.sakuraAppAuth.loginWithGoogle();
       if (!snapshot?.login) {
         setFlashMessage("Signed in with Google. Create a login on your profile.");
       }
@@ -662,7 +662,7 @@ function SakuraBackground() {
           }}
           className="absolute text-xs text-[#ffb7c5]"
         >
-          🌸
+          ??
         </m.div>
       ))}
     </div>
@@ -725,20 +725,20 @@ function HeaderAuth() {
     setAuthStateSettled(Boolean(window.sakuraAuthStateSettled));
 
     const syncAuthBridge = () => {
-      if (window.sakuraFirebaseAuth) {
+      if (window.sakuraAppAuth) {
         setAuthReady(true);
         setAuthStateSettled(Boolean(window.sakuraAuthStateSettled));
         setAuthLoadError(null);
         setCurrentUser(window.sakuraCurrentUserSnapshot ?? null);
         unsubscribe();
-        unsubscribe = window.sakuraFirebaseAuth.onAuthStateChanged((user) => {
+        unsubscribe = window.sakuraAppAuth.onAuthStateChanged((user) => {
           setCurrentUser(user);
         });
         return;
       }
 
-      if (window.sakuraFirebaseAuthError) {
-        setAuthLoadError(window.sakuraFirebaseAuthError);
+      if (window.sakuraAppAuthError) {
+        setAuthLoadError(window.sakuraAppAuthError);
       }
     };
 
@@ -760,7 +760,7 @@ function HeaderAuth() {
           ? "login"
           : "register";
 
-      requestFirebaseAuthBoot();
+      requestAppAuthBoot();
       setMode(nextMode);
       setIsModalOpen(true);
       setSubmitError(null);
@@ -772,16 +772,16 @@ function HeaderAuth() {
 
     const handleError = () => {
       setAuthLoadError(
-        window.sakuraFirebaseAuthError ??
+        window.sakuraAppAuthError ??
           "Auth module did not load. Проверьте соединение и настройки Supabase."
       );
     };
 
     const timeoutId = window.setTimeout(() => {
       if (
-        !window.sakuraFirebaseAuth &&
-        !window.sakuraStartFirebaseAuth &&
-        !window.sakuraFirebaseAuthError
+        !window.sakuraAppAuth &&
+        !window.sakuraStartSupabaseApp &&
+        !window.sakuraAppAuthError
       ) {
         setAuthLoadError(
           "Auth module did not load. Проверьте соединение и настройки Supabase."
@@ -820,7 +820,7 @@ function HeaderAuth() {
       const startedAt = Date.now();
 
       while (!isCancelled && Date.now() - startedAt < AUTH_BOOT_TIMEOUT_MS) {
-        if (window.sakuraFirebaseAuth) {
+        if (window.sakuraAppAuth) {
           setAuthReady(true);
           setAuthStateSettled(Boolean(window.sakuraAuthStateSettled));
           setAuthLoadError(null);
@@ -828,16 +828,16 @@ function HeaderAuth() {
           return;
         }
 
-        if (window.sakuraFirebaseAuthError) {
-          setAuthLoadError(window.sakuraFirebaseAuthError);
+        if (window.sakuraAppAuthError) {
+          setAuthLoadError(window.sakuraAppAuthError);
           return;
         }
 
-        requestFirebaseAuthBoot();
+        requestAppAuthBoot();
         await new Promise((resolve) => window.setTimeout(resolve, AUTH_BOOT_RETRY_INTERVAL_MS));
       }
 
-      if (!isCancelled && !window.sakuraFirebaseAuth && !window.sakuraFirebaseAuthError) {
+      if (!isCancelled && !window.sakuraAppAuth && !window.sakuraAppAuthError) {
         setAuthLoadError(
           "Auth runtime starts too slowly. Refresh the page and try again."
         );
@@ -856,12 +856,12 @@ function HeaderAuth() {
       typeof window === "undefined" ||
       !authStateSettled ||
       !currentUserId ||
-      !window.sakuraFirebaseAuth
+      !window.sakuraAppAuth
     ) {
       return;
     }
 
-    window.sakuraFirebaseAuth
+    window.sakuraAppAuth
       .syncPresence({
         path: `${window.location.pathname}${window.location.search}`,
         source: "home-view",
@@ -940,7 +940,7 @@ function HeaderAuth() {
       return;
     }
 
-    requestFirebaseAuthBoot();
+    requestAppAuthBoot();
     setMode("register");
     setIsModalOpen(true);
     setSubmitError(null);
@@ -960,7 +960,7 @@ function HeaderAuth() {
   ]);
 
   const openModal = (nextMode: AuthMode) => {
-    requestFirebaseAuthBoot();
+    requestAppAuthBoot();
     setMode(nextMode);
     setIsModalOpen(true);
     setSubmitError(null);
@@ -1003,9 +1003,9 @@ function HeaderAuth() {
   };
 
   const handleResendVerification = async () => {
-    requestFirebaseAuthBoot();
+    requestAppAuthBoot();
 
-    if (!window.sakuraFirebaseAuth) {
+    if (!window.sakuraAppAuth) {
       setVerificationError(
         authLoadError ?? "Supabase Auth еще не готов. Подождите пару секунд и попробуйте снова."
       );
@@ -1017,7 +1017,7 @@ function HeaderAuth() {
     setIsVerificationSending(true);
 
     try {
-      const snapshot = await window.sakuraFirebaseAuth.resendVerificationEmail();
+      const snapshot = await window.sakuraAppAuth.resendVerificationEmail();
       setCurrentUser(snapshot);
       setVerificationSuccess(
         snapshot?.verificationEmailSent
@@ -1032,9 +1032,9 @@ function HeaderAuth() {
   };
 
   const handleRefreshVerification = async () => {
-    requestFirebaseAuthBoot();
+    requestAppAuthBoot();
 
-    if (!window.sakuraFirebaseAuth) {
+    if (!window.sakuraAppAuth) {
       setVerificationError(
         authLoadError ?? "Supabase Auth еще не готов. Подождите пару секунд и попробуйте снова."
       );
@@ -1046,7 +1046,7 @@ function HeaderAuth() {
     setIsVerificationRefreshing(true);
 
     try {
-      const snapshot = await window.sakuraFirebaseAuth.refreshVerificationStatus();
+      const snapshot = await window.sakuraAppAuth.refreshVerificationStatus();
       setCurrentUser(snapshot);
 
       if (isEmailVerificationLocked(snapshot)) {
@@ -1066,9 +1066,9 @@ function HeaderAuth() {
   const navigateToProfile = async (user: AuthUserSnapshot | null) => {
     let nextUser = user ?? window.sakuraCurrentUserSnapshot ?? null;
 
-    if (isEmailVerificationLocked(nextUser) && window.sakuraFirebaseAuth) {
+    if (isEmailVerificationLocked(nextUser) && window.sakuraAppAuth) {
       try {
-        const refreshedSnapshot = await window.sakuraFirebaseAuth.refreshVerificationStatus();
+        const refreshedSnapshot = await window.sakuraAppAuth.refreshVerificationStatus();
         setCurrentUser(refreshedSnapshot);
         nextUser = refreshedSnapshot;
       } catch {}
@@ -1080,7 +1080,7 @@ function HeaderAuth() {
     }
 
     if (requiresGoogleAccountCompletion(nextUser)) {
-      requestFirebaseAuthBoot();
+      requestAppAuthBoot();
       setMode("register");
       setIsModalOpen(true);
       setSubmitError(
@@ -1099,10 +1099,10 @@ function HeaderAuth() {
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    requestFirebaseAuthBoot();
+    requestAppAuthBoot();
     requestSupabaseAuthBoot();
 
-    if (!window.sakuraFirebaseAuth) {
+    if (!window.sakuraAppAuth) {
       setSubmitError(
         authLoadError ?? "Supabase Auth еще не готов. Подождите пару секунд и попробуйте снова."
       );
@@ -1158,14 +1158,14 @@ function HeaderAuth() {
     try {
       let snapshot: AuthUserSnapshot | null;
       if (isGoogleSetupFlowActive) {
-        snapshot = await window.sakuraFirebaseAuth.completeGoogleAccount({
+        snapshot = await window.sakuraAppAuth.completeGoogleAccount({
           login: loginName.trim().replace(/\s+/g, ""),
           displayName: profileName.trim(),
           password,
         });
         setFlashMessage("Google account completed. Login and password are now linked.");
       } else if (mode === "register") {
-        snapshot = await window.sakuraFirebaseAuth.register({
+        snapshot = await window.sakuraAppAuth.register({
           login: loginName.trim().replace(/\s+/g, ""),
           displayName: profileName.trim(),
           email: identifier.trim(),
@@ -1182,7 +1182,7 @@ function HeaderAuth() {
             : "Аккаунт создан. Вход выполнен автоматически."
         );
       } else {
-        snapshot = await window.sakuraFirebaseAuth.login(identifier.trim(), password);
+        snapshot = await window.sakuraAppAuth.login(identifier.trim(), password);
         setFlashMessage(
           isEmailVerificationLocked(snapshot)
             ? "Почта не подтверждена. Подтвердите email, чтобы открыть профиль."
@@ -1209,7 +1209,7 @@ function HeaderAuth() {
   };
 
   const handleLogout = async () => {
-    if (!window.sakuraFirebaseAuth) {
+    if (!window.sakuraAppAuth) {
       setFlashMessage(
         authLoadError ?? "Supabase Auth еще не готов. Подождите пару секунд и попробуйте снова."
       );
@@ -1219,7 +1219,7 @@ function HeaderAuth() {
     setIsLoggingOut(true);
 
     try {
-      await window.sakuraFirebaseAuth.logout();
+      await window.sakuraAppAuth.logout();
       setFlashMessage("Вы вышли из аккаунта.");
     } catch (error) {
       setFlashMessage(getFirebaseErrorMessage(error));
@@ -1229,7 +1229,7 @@ function HeaderAuth() {
   };
 
   const handleGoogleLogin = async () => {
-    requestFirebaseAuthBoot();
+    requestAppAuthBoot();
     requestSupabaseAuthBoot();
 
     setIsGoogleSubmitting(true);
@@ -1247,14 +1247,14 @@ function HeaderAuth() {
         return;
       }
 
-      if (!window.sakuraFirebaseAuth) {
+      if (!window.sakuraAppAuth) {
         setSubmitError(
           authLoadError ?? "Supabase Auth еще не готов. Подождите пару секунд и попробуйте снова."
         );
         return;
       }
 
-      const snapshot = await window.sakuraFirebaseAuth.loginWithGoogle();
+      const snapshot = await window.sakuraAppAuth.loginWithGoogle();
       if (!snapshot) {
         closeModal();
         setFlashMessage("Открываем Google для входа...");
@@ -1447,7 +1447,7 @@ function HeaderAuth() {
                     onClick={closeModal}
                     className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#272727] bg-[#101010] text-lg text-gray-400 transition hover:border-[#ffb7c5]/40 hover:text-white"
                   >
-                    ×
+                    ?
                   </button>
                 ) : null}
               </div>
@@ -1690,7 +1690,7 @@ function HeaderAuth() {
                   onClick={closeVerificationModal}
                   className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#3a2a31] bg-[#140d11] text-lg text-[#ffb7c5] transition hover:border-[#ffb7c5]/40 hover:text-white"
                 >
-                  ×
+                  ?
                 </button>
               </div>
             </div>
@@ -1748,7 +1748,7 @@ export default function Home() {
         return;
       }
 
-      const bridge = window.sakuraFirebaseAuth;
+      const bridge = window.sakuraAppAuth;
 
       if (!bridge) {
         return;
@@ -1788,9 +1788,9 @@ export default function Home() {
       }
     };
 
-    requestFirebaseAuthBoot();
+    requestAppAuthBoot();
 
-    if (window.sakuraFirebaseAuth) {
+    if (window.sakuraAppAuth) {
       startPolling();
     }
 
@@ -1829,9 +1829,9 @@ export default function Home() {
     let snapshot = window.sakuraCurrentUserSnapshot;
 
     if (snapshot && !snapshot.isAnonymous) {
-      if (isEmailVerificationLocked(snapshot) && window.sakuraFirebaseAuth) {
+      if (isEmailVerificationLocked(snapshot) && window.sakuraAppAuth) {
         try {
-          snapshot = await window.sakuraFirebaseAuth.refreshVerificationStatus();
+          snapshot = await window.sakuraAppAuth.refreshVerificationStatus();
         } catch {}
       }
 
@@ -1844,7 +1844,7 @@ export default function Home() {
       return;
     }
 
-    requestFirebaseAuthBoot();
+    requestAppAuthBoot();
     window.dispatchEvent(
       new CustomEvent(OPEN_AUTH_MODAL_EVENT, {
         detail: { mode: "register" satisfies AuthMode },
@@ -1862,7 +1862,7 @@ export default function Home() {
           <div className="flex flex-wrap items-center gap-3 md:justify-self-start">
             <Link href="/" className="flex items-center gap-3 transition-opacity hover:opacity-90">
             <span className="text-2xl text-[#ffb7c5] drop-shadow-[0_0_10px_rgba(255,183,197,0.5)]">
-              🌸
+              ??
             </span>
             <h1 className="text-xl font-black tracking-tighter uppercase text-white">
               Sa<span className="text-[#ffb7c5]">kura</span>
@@ -2021,7 +2021,7 @@ function FeatureShowcase() {
               aria-label="Предыдущая карточка"
               className="absolute -left-2 z-10 flex h-12 w-12 items-center justify-center rounded-full border border-[#ffb7c5]/20 bg-[#140f12] text-[#ffb7c5] shadow-[0_0_20px_rgba(255,183,197,0.08)] transition hover:border-[#ffb7c5]/55 hover:bg-[#1c1217] md:-left-6"
             >
-              ←
+              &lt;
             </button>
 
             <m.div
@@ -2078,7 +2078,7 @@ function FeatureShowcase() {
               aria-label="Следующая карточка"
               className="absolute -right-2 z-10 flex h-12 w-12 items-center justify-center rounded-full border border-[#ffb7c5]/20 bg-[#140f12] text-[#ffb7c5] shadow-[0_0_20px_rgba(255,183,197,0.08)] transition hover:border-[#ffb7c5]/55 hover:bg-[#1c1217] md:-right-6"
             >
-              →
+              &gt;
             </button>
           </div>
         </div>
@@ -2190,3 +2190,4 @@ function DownloadSection() {
     </section>
   );
 }
+

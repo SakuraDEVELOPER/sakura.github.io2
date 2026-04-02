@@ -24,9 +24,9 @@ type SiteOnlineBridge = {
 };
 
 type SiteOnlineRuntimeWindow = Window & {
-  sakuraFirebaseAuth?: SiteOnlineBridge;
-  sakuraStartFirebaseAuth?: () => Promise<unknown> | unknown;
-  sakuraFirebaseAuthError?: string;
+  sakuraAppAuth?: SiteOnlineBridge;
+  sakuraStartSupabaseApp?: () => Promise<unknown> | unknown;
+  sakuraAppAuthError?: string | null;
 };
 
 type SiteOnlineBadgeProps = {
@@ -197,20 +197,20 @@ export function SiteOnlineBadge({
       const startedAt = Date.now();
 
       while (!isCancelled && Date.now() - startedAt < ONLINE_BRIDGE_WAIT_TIMEOUT_MS) {
-        if (runtimeWindow.sakuraFirebaseAuth?.getSiteOnlineUsers) {
-          return runtimeWindow.sakuraFirebaseAuth;
+        if (runtimeWindow.sakuraAppAuth?.getSiteOnlineUsers) {
+          return runtimeWindow.sakuraAppAuth;
         }
 
-        if (runtimeWindow.sakuraFirebaseAuthError) {
+        if (runtimeWindow.sakuraAppAuthError) {
           return null;
         }
 
-        void runtimeWindow.sakuraStartFirebaseAuth?.();
+        void runtimeWindow.sakuraStartSupabaseApp?.();
         await new Promise((resolve) => window.setTimeout(resolve, ONLINE_BRIDGE_RETRY_INTERVAL_MS));
       }
 
-      return runtimeWindow.sakuraFirebaseAuth?.getSiteOnlineUsers
-        ? runtimeWindow.sakuraFirebaseAuth
+      return runtimeWindow.sakuraAppAuth?.getSiteOnlineUsers
+        ? runtimeWindow.sakuraAppAuth
         : null;
     };
 
@@ -410,3 +410,4 @@ export function SiteOnlineBadge({
     </div>
   );
 }
+

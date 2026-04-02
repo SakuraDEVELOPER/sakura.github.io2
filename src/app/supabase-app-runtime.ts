@@ -2,7 +2,7 @@
 
 import type { Session, SupabaseClient, User } from "@supabase/supabase-js";
 import { AUTH_SNAPSHOT_CACHE_STORAGE_KEY } from "@/lib/auth-snapshot-cache";
-import { createFirebasePresenceRuntime } from "./firebase-auth-presence-runtime";
+import { createSupabasePresenceRuntime } from "./supabase-presence-runtime";
 import { startSupabaseAuthRuntime } from "./supabase-auth-runtime";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 
@@ -172,10 +172,7 @@ type SupabaseAppRuntimeWindow = Window & {
   sakuraAuthStateSettled?: boolean;
   sakuraStartSupabaseApp?: () => Promise<unknown> | unknown;
   sakuraSupabaseAppRuntimePromise?: Promise<AppAuthBridge | null> | null;
-  sakuraFirebaseAuth?: AppAuthBridge;
-  sakuraFirebaseAuthError?: string | null;
-  sakuraStartFirebaseAuth?: () => Promise<unknown> | unknown;
-  sakuraPresenceRuntime?: ReturnType<typeof createFirebasePresenceRuntime>;
+  sakuraPresenceRuntime?: ReturnType<typeof createSupabasePresenceRuntime>;
   sakuraSupabaseCurrentSession?: Session | null;
 };
 
@@ -688,7 +685,6 @@ const publishUserSnapshot = (snapshot: AppUserSnapshot | null) => {
 const emitAuthError = (message: string) => {
   const runtime = getRuntimeWindow();
   runtime.sakuraAppAuthError = message;
-  runtime.sakuraFirebaseAuthError = message;
   runtime.dispatchEvent(
     new CustomEvent(AUTH_ERROR_EVENT, {
       detail: message,
@@ -699,7 +695,6 @@ const emitAuthError = (message: string) => {
 const clearAuthError = () => {
   const runtime = getRuntimeWindow();
   runtime.sakuraAppAuthError = null;
-  runtime.sakuraFirebaseAuthError = undefined;
 };
 
 const markAuthStateSettled = () => {
@@ -1663,7 +1658,7 @@ const ensureCurrentPassword = async (currentPassword?: string) => {
 };
 
 const createPresenceRuntime = () =>
-  createFirebasePresenceRuntime({
+  createSupabasePresenceRuntime({
     auth: {
       currentUser: null,
     },
@@ -1876,7 +1871,6 @@ export const startSupabaseAppRuntime = async () => {
     if (!isSupabaseConfigured || !supabase) {
       runtime.sakuraAppAuthReady = true;
       runtime.sakuraAppAuthError = null;
-      runtime.sakuraFirebaseAuthError = undefined;
       runtime.sakuraAuthStateSettled = true;
       runtime.dispatchEvent(new CustomEvent(AUTH_READY_EVENT));
       runtime.dispatchEvent(new CustomEvent(AUTH_STATE_SETTLED_EVENT));
@@ -2430,7 +2424,6 @@ export const startSupabaseAppRuntime = async () => {
     };
 
     runtime.sakuraAppAuth = bridge;
-    runtime.sakuraFirebaseAuth = bridge;
     runtime.sakuraAppAuthReady = true;
     clearAuthError();
 

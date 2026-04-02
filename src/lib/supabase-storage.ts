@@ -45,7 +45,7 @@ const supabaseSyncFunctionUrl = (() => {
 })();
 
 type StorageRuntimeWindow = Window & {
-  sakuraFirebaseAuth?: {
+  sakuraAppAuth?: {
     getAuthToken?: () => Promise<string | null>;
   };
   sakuraSupabaseCurrentSession?: {
@@ -126,7 +126,7 @@ async function getFirebaseBridgeAuthToken() {
   }
 
   try {
-    return (await getRuntimeWindow().sakuraFirebaseAuth?.getAuthToken?.()) ?? null;
+    return (await getRuntimeWindow().sakuraAppAuth?.getAuthToken?.()) ?? null;
   } catch {
     return null;
   }
@@ -380,3 +380,4 @@ export async function deleteSupabaseStorageObject(objectPath: string) {
 export async function deleteSupabaseCommentMedia(objectPath: string) {
   return deleteSupabaseStorageObject(objectPath);
 }
+

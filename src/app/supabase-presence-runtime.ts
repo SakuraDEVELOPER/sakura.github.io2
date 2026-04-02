@@ -212,7 +212,7 @@ const supabaseLiveSyncActive = Boolean(supabaseLiveSyncEnabled && supabaseSyncFu
 const readCurrentLocationPath = () => `${window.location.pathname}${window.location.search}`;
 const getRuntimeWindow = () => window as PresenceRuntimeWindow;
 
-export const createFirebasePresenceRuntime = (context: FirebasePresenceRuntimeContext) => {
+export const createSupabasePresenceRuntime = (context: FirebasePresenceRuntimeContext) => {
   const {
     auth,
     db,
