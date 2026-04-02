@@ -1941,15 +1941,19 @@ export default function ProfilePage() {
   const initials = activeProfile ? initialsOf(activeProfile) : "SA";
   const activeProfileAvatarUrl = resolveProfileAvatarUrl(activeProfile);
   const hasActiveProfileAvatar = Boolean(activeProfileAvatarUrl);
+  const activeProfileId =
+    typeof activeProfile?.profileId === "number" ? activeProfile.profileId : null;
   const activeProfileRoleSignature = activeProfile?.roles?.join("|") ?? "";
+  const activeProfileDisplayNameDraft = activeProfile?.displayName ?? activeProfile?.login ?? "";
+  const activeProfileLoginDraft = activeProfile?.login ?? "";
 
   useEffect(() => {
-    if (!activeProfile?.profileId) {
+    if (!activeProfileId) {
       return;
     }
 
-    writeCachedProfileComments(activeProfile.profileId, comments);
-  }, [activeProfile?.profileId, comments]);
+    writeCachedProfileComments(activeProfileId, comments);
+  }, [activeProfileId, comments]);
 
   const applyUpdatedProfileSnapshot = useCallback((
     snapshot: UserProfile | null,
@@ -2913,7 +2917,7 @@ export default function ProfilePage() {
     );
 
   useEffect(() => {
-    if (!activeProfile) {
+    if (!activeProfileId) {
       setDraftRoles([]);
       setRolesError(null);
       setRolesSuccess(null);
@@ -2948,7 +2952,11 @@ export default function ProfilePage() {
       return;
     }
 
-    setDraftRoles(normalizeRoleSelection(activeProfile.roles));
+    setDraftRoles(
+      normalizeRoleSelection(
+        activeProfileRoleSignature ? activeProfileRoleSignature.split("|") : []
+      )
+    );
     setRolesError(null);
     setRolesSuccess(null);
     setVerificationError(null);
@@ -2957,10 +2965,10 @@ export default function ProfilePage() {
     setAdminVerificationSuccess(null);
     setBanError(null);
     setBanSuccess(null);
-    setDisplayNameInput(activeProfile.displayName ?? activeProfile.login ?? "");
+    setDisplayNameInput(activeProfileDisplayNameDraft);
     setDisplayNameError(null);
     setDisplayNameSuccess(null);
-    setUsernameInput(activeProfile.login ?? "");
+    setUsernameInput(activeProfileLoginDraft);
     setUsernameError(null);
     setUsernameSuccess(null);
     setCommentInput("");
@@ -2979,7 +2987,12 @@ export default function ProfilePage() {
     setIsEditingCommentMediaRemoved(false);
     setIsCommentUpdating(false);
     setDeletingCommentId(null);
-  }, [activeProfile, activeProfileRoleSignature]);
+  }, [
+    activeProfileId,
+    activeProfileRoleSignature,
+    activeProfileDisplayNameDraft,
+    activeProfileLoginDraft,
+  ]);
 
   useEffect(() => {
     if (!canOpenAdminPanel) {
@@ -3797,6 +3810,7 @@ export default function ProfilePage() {
         targetProfileId: !isOwner ? activeProfile?.profileId ?? null : null,
         updateCurrentUser: isOwner,
       });
+      setDisplayNameInput(snapshot?.displayName ?? nextDisplayName);
       setDisplayNameSuccess(isOwner ? "Profile name saved." : "Profile name updated.");
     } catch (error) {
       setDisplayNameError(error instanceof Error ? error.message : "Could not save profile name.");
