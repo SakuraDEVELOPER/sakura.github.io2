@@ -4675,6 +4675,16 @@ export default function ProfilePage() {
                       const resolvedCommentAuthorRole = resolveCommentAuthorRole(comment);
                       const resolvedCommentAuthorPhotoURL = resolveCommentAuthorPhotoURL(comment);
                       const resolvedCommentMediaURL = resolveCommentMediaUrl(comment);
+                      const hasCommentMediaMetadata = Boolean(
+                        (typeof comment.mediaPath === "string" && comment.mediaPath.trim()) ||
+                          (typeof comment.mediaURL === "string" && comment.mediaURL.trim()) ||
+                          (typeof comment.mediaType === "string" && comment.mediaType.trim()) ||
+                          (typeof comment.mediaSize === "number" &&
+                            Number.isFinite(comment.mediaSize) &&
+                            comment.mediaSize > 0)
+                      );
+                      const isCommentAttachmentUnavailable =
+                        hasCommentMediaMetadata && !resolvedCommentMediaURL;
                       const commentAuthorStyle = roleCommentAuthorStyle(resolvedCommentAuthorRole);
                       const isCommentEdited = Boolean(comment.updatedAt);
 
@@ -4758,9 +4768,13 @@ export default function ProfilePage() {
                           <input ref={editingCommentMediaInputRef} type="file" accept={COMMENT_MEDIA_FILE_ACCEPT} onChange={handleEditingCommentMediaChange} className="hidden" />
                           {editingCommentMediaPreviewUrl ? <div className="mt-3 overflow-hidden rounded-[22px] border border-[#232323] bg-[#050505]">
                             <CommentMediaFrame src={editingCommentMediaPreviewUrl} mediaType={editingCommentMediaFile?.type ?? null} alt="Updated comment media preview" className="block max-h-[320px] w-full object-contain" />
-                          </div> : (!isEditingCommentMediaRemoved && resolvedCommentMediaURL ? <div className="mt-3 overflow-hidden rounded-[22px] border border-[#232323] bg-[#050505]">
+                          </div> : null}
+                          {!editingCommentMediaPreviewUrl && !isEditingCommentMediaRemoved && resolvedCommentMediaURL ? <div className="mt-3 overflow-hidden rounded-[22px] border border-[#232323] bg-[#050505]">
                             <CommentMediaFrame src={resolvedCommentMediaURL} mediaType={comment.mediaType} alt={`${comment.authorName} comment attachment`} className="block max-h-[320px] w-full object-contain" controls={isCommentVideoMediaType(comment.mediaType)} />
-                          </div> : null)}
+                          </div> : null}
+                          {!editingCommentMediaPreviewUrl && !isEditingCommentMediaRemoved && isCommentAttachmentUnavailable ? <div className="mt-3 rounded-[18px] border border-[#4d3024] bg-[linear-gradient(180deg,#1a110d_0%,#120d0a_100%)] px-3 py-2">
+                            <p className="text-xs leading-relaxed text-[#f3d2c5]">Attachment unavailable. Re-upload media to restore this comment attachment.</p>
+                          </div> : null}
                           {editingCommentMediaFile ? <div className="mt-3 flex items-center">
                             <button type="button" onClick={clearEditingCommentMediaSelection} disabled={isSavingCommentUpdate} className="inline-flex items-center justify-center rounded-full border border-[#2a2a2a] bg-[#101010] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-gray-300 transition hover:border-[#4a4a4a] hover:text-white disabled:cursor-not-allowed disabled:opacity-60">Remove</button>
                           </div> : null}
@@ -4779,6 +4793,9 @@ export default function ProfilePage() {
                           {comment.message ? <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-gray-300">{renderCommentMessageWithMentions(comment.message)}</p> : null}
                           {resolvedCommentMediaURL ? <div className="overflow-hidden rounded-[22px] border border-[#232323] bg-[#050505]">
                             <CommentMediaFrame src={resolvedCommentMediaURL} mediaType={comment.mediaType} alt={`${comment.authorName} comment attachment`} className="block max-h-[360px] w-full object-contain" controls={isCommentVideoMediaType(comment.mediaType)} />
+                          </div> : null}
+                          {isCommentAttachmentUnavailable ? <div className="rounded-[18px] border border-[#4d3024] bg-[linear-gradient(180deg,#1a110d_0%,#120d0a_100%)] px-3 py-2">
+                            <p className="text-xs leading-relaxed text-[#f3d2c5]">Attachment unavailable.</p>
                           </div> : null}
                         </div>}
                       </div>;
