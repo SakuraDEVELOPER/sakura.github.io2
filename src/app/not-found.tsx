@@ -26,7 +26,7 @@ export default function NotFound() {
           Preparing Sakura Route
         </h1>
         <p className="mt-4 text-sm leading-relaxed text-gray-400">
-          Если профиль существует, страница будет автоматически восстановлена.
+          If the profile exists, this page will be restored automatically.
         </p>
       </div>
 

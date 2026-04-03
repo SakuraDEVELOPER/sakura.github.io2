@@ -51,21 +51,21 @@ const showcaseSlides: ShowcaseSlide[] = [
   {
     id: "camera",
     index: "01",
-    title: "Отдаление камеры",
-    desc: "Кастомное отдаление камеры для лучшего обзора карты и более удобного контроля замесов до 3000 юнитов.",
-    mediaOverlayTitle: "Отдаление камеры",
-    mediaCaption: "Функция отдаления камеры",
-    mediaLabel: "Скриншот функции отдаления камеры",
+    title: "Camera Zoom-Out",
+    desc: "Custom camera zoom-out for better map awareness and easier fight control up to 3000 units.",
+    mediaOverlayTitle: "Camera Zoom-Out",
+    mediaCaption: "Camera zoom-out feature",
+    mediaLabel: "Screenshot of the camera zoom-out feature",
     mediaSrc: withRepoBasePath("/camera-preview.jpg", true),
   },
   {
     id: "hud-panel",
     index: "02",
-    title: "HP / MP bar + панель скиллов и предметов",
-    desc: "Полосы ресурсов врагов и тиммейтов, а также панель скиллов и предметов в одном блоке, чтобы удобно отслеживать, что у него есть, и тем самым иметь преимущество.",
+    title: "HP / MP Bars + Skills & Items Panel",
+    desc: "Enemy and ally resource bars, plus a skills and items panel in one block, so you can quickly track what they have and keep an advantage.",
     mediaOverlayTitle: "Enemy esp",
-    mediaCaption: "HUD с барами, скиллами и предметами",
-    mediaLabel: "Скриншот HUD с барами, скиллами и предметами",
+    mediaCaption: "HUD with bars, skills, and items",
+    mediaLabel: "Screenshot of the HUD with bars, skills, and items",
     mediaSrc: withRepoBasePath("/hud-preview.jpg", true),
   },
 ];
@@ -284,7 +284,7 @@ const OPEN_AUTH_MODAL_EVENT = "sakura-open-auth-modal";
 const EMAIL_VERIFICATION_LOCK_EVENT = "sakura-email-verification-lock";
 const PRESENCE_DIRTY_EVENT = "sakura-presence-dirty";
 const CURRENT_PROFILE_ID_STORAGE_KEY = "sakura-current-profile-id";
-const LOGIN_PATTERN = /^[A-Za-zА-Яа-яЁё0-9._-]+$/;
+const LOGIN_PATTERN = /^[A-Za-z0-9._-]+$/;
 
 const ROLE_CHIP_ORDER = new Map([
   ["banned", 0],
@@ -490,7 +490,7 @@ function getFirebaseErrorMessage(error: unknown) {
   const currentHostname =
     typeof window !== "undefined" && window.location.hostname
       ? window.location.hostname
-      : "ваш домен";
+      : "your domain";
 
   if (code === "auth/invalid-login") {
     return "Login must be 3-24 characters with no spaces.";
@@ -513,61 +513,61 @@ function getFirebaseErrorMessage(error: unknown) {
   }
 
   if (code === "auth/invalid-login") {
-    return "Логин должен содержать минимум 3 символа и быть без пробелов.";
+    return "Login must be at least 3 characters long and contain no spaces.";
   }
 
   if (code === "auth/login-already-in-use") {
-    return "Этот логин уже занят.";
+    return "This login is already taken.";
   }
 
   if (code === "auth/login-not-found") {
-    return "Аккаунт с таким логином не найден.";
+    return "No account was found with this login.";
   }
 
   if (code === "permission-denied") {
-    return "Firestore blocked access. Проверьте rules для users и meta/counters в Firebase Console.";
+    return "Firestore blocked access. Check rules for users and meta/counters in Firebase Console.";
   }
 
   if (code === "auth/email-not-verified") {
-    return "Подтвердите почту, прежде чем открывать профиль и использовать аккаунт.";
+    return "Verify your email before opening the profile and using the account.";
   }
 
   switch (code) {
     case "auth/email-already-in-use":
-      return "Этот email уже зарегистрирован.";
+      return "This email is already registered.";
     case "auth/invalid-email":
-      return "Введите корректный email.";
+      return "Enter a valid email.";
     case "auth/weak-password":
     case "auth/invalid-login":
     case "auth/login-already-in-use":
     case "auth/login-not-found":
-      return "Пароль должен содержать минимум 6 символов.";
+      return "Password must contain at least 6 characters.";
     case "auth/user-not-found":
     case "auth/wrong-password":
     case "auth/invalid-credential":
-      return "Неверный email, логин или пароль.";
+      return "Invalid email, login, or password.";
     case "auth/too-many-requests":
-      return "Слишком много попыток. Попробуйте немного позже.";
+      return "Too many attempts. Please try again later.";
     case "auth/network-request-failed":
-      return "Не удалось подключиться к Firebase. Проверьте интернет.";
+      return "Could not connect to Firebase. Check your internet connection.";
     case "auth/operation-not-allowed":
-      return "Email/password вход не включен в настройках Firebase Auth.";
+      return "Email/password sign-in is not enabled in Firebase Auth settings.";
     case "auth/popup-closed-by-user":
-      return "Окно входа через Google было закрыто.";
+      return "The Google sign-in popup was closed.";
     case "auth/popup-blocked":
-      return "Браузер заблокировал pop-up. Разрешите всплывающие окна.";
+      return "The browser blocked the popup. Allow popups and try again.";
     case "auth/cancelled-popup-request":
-      return "Запрос на вход через Google был отменен.";
+      return "The Google sign-in request was canceled.";
     case "auth/unauthorized-domain":
-      return `Домен ${currentHostname} не добавлен в Authorized domains в Firebase Auth. Добавьте только hostname без https и без /sakura.github.io.`;
+      return `Domain ${currentHostname} is not listed in Authorized domains in Firebase Auth. Add only the hostname, without https and without /sakura.github.io.`;
     case "auth/account-exists-with-different-credential":
-      return "Для этого email уже используется другой способ входа.";
+      return "A different sign-in method is already linked to this email.";
     default:
       if (error instanceof Error && error.message) {
         return error.message;
       }
 
-      return "Не удалось выполнить запрос к Firebase Auth. Попробуйте еще раз.";
+      return "Could not complete the Firebase Auth request. Please try again.";
   }
 }
 
@@ -686,7 +686,7 @@ function SakuraBackground() {
   /* const handleGoogleLogin = async () => {
     if (!window.sakuraFirebaseAuth) {
       setSubmitError(
-        authLoadError ?? "Firebase Auth еще не готов. Подождите пару секунд и попробуйте снова."
+        authLoadError ?? "Firebase Auth is not ready yet. Wait a few seconds and try again."
       );
       return;
     }
@@ -700,9 +700,9 @@ function SakuraBackground() {
       if (!snapshot?.login) {
         setFlashMessage("Signed in with Google. Create a login on your profile.");
       }
-      setFlashMessage("Вход через Google выполнен.");
+      setFlashMessage("Signed in with Google.");
       if (mode === "register" && snapshot?.verificationEmailSent) {
-        setFlashMessage("Аккаунт создан. Письмо для подтверждения отправлено на почту.");
+        setFlashMessage("Account created. Verification email sent.");
       }
 
       if (mode === "register" && snapshot?.verificationEmailSent) {
@@ -831,14 +831,14 @@ function HeaderAuth() {
       setSubmitError(null);
     };
     const handleVerificationLock = () => {
-      setFlashMessage("Подтвердите почту, чтобы открыть профиль и использовать аккаунт.");
+      setFlashMessage("Verify your email to open the profile and use the account.");
       setIsVerificationModalOpen(true);
     };
 
     const handleError = (event: Event) => {
       const message = getAuthBridgeErrorMessage(
         event,
-        "Firebase Auth module did not load. Проверьте соединение и настройки Firebase."
+        "Firebase Auth module did not load. Check your connection and Firebase settings."
       );
 
       if (isRecoverableStaleRuntimeError(message) && recoverFromStaleRuntime()) {
@@ -851,7 +851,7 @@ function HeaderAuth() {
     const timeoutId = window.setTimeout(() => {
       if (!hasCurrentFirebaseAuthRuntime() && !window.sakuraFirebaseAuthError) {
         setAuthLoadError(
-          "Firebase Auth module did not load. Проверьте соединение и настройки Firebase."
+          "Firebase Auth module did not load. Check your connection and Firebase settings."
         );
       }
     }, 4000);
@@ -1013,7 +1013,7 @@ function HeaderAuth() {
 
     if (!window.sakuraFirebaseAuth) {
       setVerificationError(
-        authLoadError ?? "Firebase Auth еще не готов. Подождите пару секунд и попробуйте снова."
+        authLoadError ?? "Firebase Auth is not ready yet. Wait a few seconds and try again."
       );
       return;
     }
@@ -1027,8 +1027,8 @@ function HeaderAuth() {
       setCurrentUser(snapshot);
       setVerificationSuccess(
         snapshot?.verificationEmailSent
-          ? "Письмо с подтверждением отправлено повторно."
-          : "Почта уже подтверждена."
+          ? "Verification email sent again."
+          : "Email is already verified."
       );
     } catch (error) {
       setVerificationError(getFirebaseErrorMessage(error));
@@ -1042,7 +1042,7 @@ function HeaderAuth() {
 
     if (!window.sakuraFirebaseAuth) {
       setVerificationError(
-        authLoadError ?? "Firebase Auth еще не готов. Подождите пару секунд и попробуйте снова."
+        authLoadError ?? "Firebase Auth is not ready yet. Wait a few seconds and try again."
       );
       return;
     }
@@ -1056,12 +1056,12 @@ function HeaderAuth() {
       setCurrentUser(snapshot);
 
       if (isEmailVerificationLocked(snapshot)) {
-        setVerificationSuccess("Подтверждение еще не найдено. Проверьте письмо и нажмите снова.");
+        setVerificationSuccess("Verification not found yet. Check your email and try again.");
         return;
       }
 
-      setFlashMessage("Почта подтверждена. Доступ к профилю открыт.");
-      setVerificationSuccess("Почта подтверждена. Теперь можно открыть профиль.");
+      setFlashMessage("Email verified. Profile access is now unlocked.");
+      setVerificationSuccess("Email verified. You can now open your profile.");
     } catch (error) {
       setVerificationError(getFirebaseErrorMessage(error));
     } finally {
@@ -1109,7 +1109,7 @@ function HeaderAuth() {
 
     if (!window.sakuraFirebaseAuth) {
       setSubmitError(
-        authLoadError ?? "Firebase Auth еще не готов. Подождите пару секунд и попробуйте снова."
+        authLoadError ?? "Firebase Auth is not ready yet. Wait a few seconds and try again."
       );
       return;
     }
@@ -1119,13 +1119,8 @@ function HeaderAuth() {
       return;
     }
 
-    if (!identifier.trim()) {
-      setSubmitError(mode === "register" ? "Введите email." : "Введите email или логин.");
-      return;
-    }
-
     if (!password) {
-      setSubmitError("Введите пароль.");
+      setSubmitError("Enter your password.");
       return;
     }
 
@@ -1134,11 +1129,6 @@ function HeaderAuth() {
 
       if (!normalizedLogin) {
         setSubmitError("Enter a login.");
-        return;
-      }
-
-      if (!normalizedLogin) {
-        setSubmitError("Введите логин.");
         return;
       }
 
@@ -1153,7 +1143,7 @@ function HeaderAuth() {
     }
 
     if (mode === "register" && password !== confirmPassword) {
-      setSubmitError("Пароли не совпадают.");
+      setSubmitError("Passwords do not match.");
       return;
     }
 
@@ -1178,15 +1168,15 @@ function HeaderAuth() {
         });
         setFlashMessage(
           isEmailVerificationLocked(snapshot)
-            ? "Аккаунт создан. Подтвердите почту, чтобы открыть профиль и использовать аккаунт."
-            : "Аккаунт создан. Вход выполнен автоматически."
+            ? "Account created. Verify your email to open the profile and use the account."
+            : "Account created. Signed in automatically."
         );
       } else {
         snapshot = await window.sakuraFirebaseAuth.login(identifier.trim(), password);
         setFlashMessage(
           isEmailVerificationLocked(snapshot)
-            ? "Почта не подтверждена. Подтвердите email, чтобы открыть профиль."
-            : "Вход выполнен."
+            ? "Email is not verified. Verify your email to open the profile."
+            : "Signed in."
         );
       }
 
@@ -1209,7 +1199,7 @@ function HeaderAuth() {
   const handleLogout = async () => {
     if (!window.sakuraFirebaseAuth) {
       setFlashMessage(
-        authLoadError ?? "Firebase Auth еще не готов. Подождите пару секунд и попробуйте снова."
+        authLoadError ?? "Firebase Auth is not ready yet. Wait a few seconds and try again."
       );
       return;
     }
@@ -1218,7 +1208,7 @@ function HeaderAuth() {
 
     try {
       await window.sakuraFirebaseAuth.logout();
-      setFlashMessage("Вы вышли из аккаунта.");
+      setFlashMessage("Signed out.");
     } catch (error) {
       setFlashMessage(getFirebaseErrorMessage(error));
     } finally {
@@ -1231,7 +1221,7 @@ function HeaderAuth() {
 
     if (!window.sakuraFirebaseAuth) {
       setSubmitError(
-        authLoadError ?? "Firebase Auth еще не готов. Подождите пару секунд и попробуйте снова."
+        authLoadError ?? "Firebase Auth is not ready yet. Wait a few seconds and try again."
       );
       return;
     }
@@ -1243,7 +1233,7 @@ function HeaderAuth() {
       const snapshot = await window.sakuraFirebaseAuth.loginWithGoogle();
       if (!snapshot) {
         closeModal();
-        setFlashMessage("Открываем Google для входа...");
+        setFlashMessage("Opening Google sign-in...");
         return;
       }
 
@@ -1262,8 +1252,8 @@ function HeaderAuth() {
 
       setFlashMessage(
         isEmailVerificationLocked(snapshot)
-          ? "Почта не подтверждена. Подтвердите email, чтобы открыть профиль."
-          : "Вход через Google выполнен."
+          ? "Email is not verified. Verify your email to open the profile."
+          : "Signed in with Google."
       );
       closeModal();
       if (isEmailVerificationLocked(snapshot)) {
@@ -1422,8 +1412,8 @@ function HeaderAuth() {
                   </p>
                   <p className="mt-2 hidden text-sm text-gray-400">
                     {mode === "register"
-                      ? "Создайте логин, чтобы он отображался в профиле и подходил для входа."
-                      : "Войти можно по email или логину через Firebase Auth."}
+                      ? "Create a login so it appears in the profile and can be used for sign-in."
+                      : "Sign in with your email or login through Firebase Auth."}
                   </p>
                 </div>
 
@@ -1467,7 +1457,7 @@ function HeaderAuth() {
 
               {!authReady && !authLoadError ? (
                 <div className="mt-5 rounded-2xl border border-[#2b1b1e] bg-[#120d0f] px-4 py-3 text-sm text-[#f2c0cb]">
-                  Подключаем Firebase Auth...
+                  Connecting Firebase Auth...
                 </div>
               ) : null}
 
@@ -1491,7 +1481,7 @@ function HeaderAuth() {
                       height="18"
                       alt="Google"
                     />
-                    <span>{isGoogleSubmitting ? "Connecting Google..." : "Войти через Google"}</span>
+                    <span>{isGoogleSubmitting ? "Connecting Google..." : "Sign in with Google"}</span>
                   </button>
 
                   <div className="mt-5 flex items-center gap-3">
@@ -1548,7 +1538,7 @@ function HeaderAuth() {
                       Login without spaces. Letters, numbers, `.`, `_`, and `-` are supported.
                     </span>
                     <span className="mt-2 hidden text-xs leading-relaxed text-gray-500">
-                      Логин без пробелов. Поддерживаются буквы, цифры, `.`, `_`, `-`.
+                      Login without spaces. Letters, numbers, `.`, `_`, and `-` are supported.
                     </span>
                   </label>
                 ) : null}
@@ -1898,12 +1888,12 @@ export default function Home() {
           <FeatureBox
             delay={0.1}
             title="VMT Hooking"
-            desc="Безопасный перехват функций через таблицы виртуальных методов."
+            desc="Safe function interception through virtual method tables."
           />
           <FeatureBox
             delay={0.2}
             title="Signature Scanner"
-            desc="Быстрое обновление офсетов после патчей Valve."
+            desc="Fast offset updates after Valve patches."
           />
         </section>
         <SetupSteps />
@@ -1919,14 +1909,14 @@ function TrialCta({ onClick }: { onClick: () => void }) {
     <section className="px-10 pt-2 pb-4">
       <div className="mx-auto flex max-w-6xl flex-col items-center gap-5 text-center">
         <p className="text-lg leading-relaxed text-gray-300">
-          Приватный чит для Dota 2.
+          Private cheat for Dota 2.
         </p>
         <button
           type="button"
           onClick={onClick}
           className="inline-flex items-center justify-center rounded-full border border-[#ffb7c5]/60 bg-[#140f12] px-8 py-3 text-sm font-semibold text-[#ffd8e1] shadow-[0_0_24px_rgba(255,183,197,0.16)] transition-all hover:border-[#ffd1db] hover:bg-[#1c1217] hover:text-white active:scale-95"
         >
-          Тестовый период на 7 дней
+          7-day trial period
         </button>
       </div>
     </section>
@@ -1962,12 +1952,12 @@ function BottomInfoSection() {
       <FeatureBox
         delay={0.1}
         title="Best free choice"
-        desc="Лучшее бесплатное решение для комфортной игры."
+        desc="The best free solution for comfortable gameplay."
       />
       <FeatureBox
         delay={0.2}
         title="Temporary Testing Period"
-        desc="Успейте воспользоваться бесплатно данным решением и помочь в развитии проекта."
+        desc="Use this solution for free while testing and help support the project."
       />
     </section>
   );
@@ -2246,7 +2236,7 @@ function LegacyFeatureShowcase() {
             Feature Showcase
           </p>
           <h2 className="max-w-2xl text-4xl font-black uppercase tracking-tighter text-white">
-            Листай карточки
+            Browse the cards
           </h2>
         </div>
 
@@ -2280,7 +2270,7 @@ function LegacyFeatureShowcase() {
               <button
                 type="button"
                 onClick={goToPrevious}
-                aria-label="Предыдущая карточка"
+                aria-label="Previous card"
                 className="absolute -left-2 z-10 flex h-12 w-12 items-center justify-center rounded-full border border-[#2b1b1e] bg-[#0d0d0d] text-[#ffb7c5] shadow-[0_0_20px_rgba(255,183,197,0.08)] transition hover:border-[#ffb7c5]/50 hover:bg-[#1a1012] md:-left-6"
               >
                 ←
@@ -2304,7 +2294,7 @@ function LegacyFeatureShowcase() {
                   className={`group relative block w-full overflow-hidden rounded-[32px] border border-[#1f1f1f] bg-black text-left ${
                     isCarouselDragging ? "cursor-grabbing" : "cursor-grab"
                   }`}
-                  aria-label={`Открыть ${slide.title} в полном размере`}
+                  aria-label={`Open ${slide.title} in full size`}
                   style={{ touchAction: "pan-y" }}
                 >
                   <div className="relative aspect-[16/9] overflow-hidden">
@@ -2333,7 +2323,7 @@ function LegacyFeatureShowcase() {
                     <button
                       key={item.id}
                       type="button"
-                      aria-label={`Перейти к карточке ${index + 1}`}
+                      aria-label={`Go to card ${index + 1}`}
                       onClick={() => setActiveSlide(index)}
                       className={`h-2.5 rounded-full transition-all ${
                         index === activeSlide ? "w-8 bg-[#ffb7c5]" : "w-2.5 bg-white/20 hover:bg-white/40"
@@ -2346,7 +2336,7 @@ function LegacyFeatureShowcase() {
               <button
                 type="button"
                 onClick={goToNext}
-                aria-label="Следующая карточка"
+                aria-label="Next card"
                 className="absolute -right-2 z-10 flex h-12 w-12 items-center justify-center rounded-full border border-[#2b1b1e] bg-[#0d0d0d] text-[#ffb7c5] shadow-[0_0_20px_rgba(255,183,197,0.08)] transition hover:border-[#ffb7c5]/50 hover:bg-[#1a1012] md:-right-6"
               >
                 →
@@ -2479,7 +2469,7 @@ function FeatureShowcase() {
                 Preview
               </span>
               <p className="text-sm leading-relaxed text-gray-500">
-                Скриншоты для этого блока скоро будут добавлены.
+                Screenshots for this block will be added soon.
               </p>
             </div>
           </m.div>
@@ -2488,7 +2478,7 @@ function FeatureShowcase() {
             <button
               type="button"
               onClick={goToPrevious}
-              aria-label="Предыдущая карточка"
+              aria-label="Previous card"
               className="absolute -left-2 z-10 flex h-12 w-12 items-center justify-center rounded-full border border-[#ffb7c5]/20 bg-[#140f12] text-[#ffb7c5] shadow-[0_0_20px_rgba(255,183,197,0.08)] transition hover:border-[#ffb7c5]/55 hover:bg-[#1c1217] md:-left-6"
             >
               ←
@@ -2521,7 +2511,7 @@ function FeatureShowcase() {
                       Placeholder
                     </p>
                     <p className="mt-3 max-w-sm text-sm leading-relaxed text-gray-500">
-                      Блок со скриншотами возвращён, но сами изображения будут добавлены позже.
+                      The screenshot block is back, but the images themselves will be added later.
                     </p>
                   </div>
                 </div>
@@ -2532,7 +2522,7 @@ function FeatureShowcase() {
                   <button
                     key={item.id}
                     type="button"
-                    aria-label={`Перейти к карточке ${index + 1}`}
+                    aria-label={`Go to card ${index + 1}`}
                     onClick={() => setActiveSlide(index)}
                     className={`h-2.5 rounded-full transition-all ${
                       index === activeSlide ? "w-8 bg-[#ffb7c5]" : "w-2.5 bg-white/20 hover:bg-white/40"
@@ -2545,7 +2535,7 @@ function FeatureShowcase() {
             <button
               type="button"
               onClick={goToNext}
-              aria-label="Следующая карточка"
+              aria-label="Next card"
               className="absolute -right-2 z-10 flex h-12 w-12 items-center justify-center rounded-full border border-[#ffb7c5]/20 bg-[#140f12] text-[#ffb7c5] shadow-[0_0_20px_rgba(255,183,197,0.08)] transition hover:border-[#ffb7c5]/55 hover:bg-[#1c1217] md:-right-6"
             >
               →
@@ -2562,17 +2552,17 @@ function SetupSteps() {
     {
       num: "01",
       title: "Download",
-      desc: "Получите последнюю версию билда и распакуйте архив в удобное место.",
+      desc: "Get the latest build and extract the archive to a convenient location.",
     },
     {
       num: "02",
       title: "Initialize",
-      desc: "Запустите Dota 2, затем откройте лоадер от имени администратора.",
+      desc: "Launch Dota 2, then open the loader as administrator.",
     },
     {
       num: "03",
       title: "Configure",
-      desc: "Нажмите INSERT в игре, чтобы открыть меню и подгрузить свои Lua конфиги.",
+      desc: "Press INSERT in-game to open the menu and load your Lua configs.",
     },
   ];
 
@@ -2619,10 +2609,10 @@ function DownloadSection() {
       >
         <div className="flex-1">
           <h2 className="mb-4 text-3xl font-black uppercase tracking-tighter text-[#ffb7c5]">
-            Готовы стать победителем?
+            Ready to dominate?
           </h2>
           <p className="mb-6 text-sm leading-relaxed text-gray-500">
-            Загрузите последнюю версию чита.
+            Download the latest cheat build.
           </p>
           <div className="flex items-center gap-6">
             <div className="flex flex-col">

@@ -29,7 +29,7 @@ const AUTH_FALLBACK_PRELOAD_TIMEOUT_MS = 450;
 const getBootErrorMessage = (error: unknown) =>
   error instanceof Error && error.message
     ? error.message
-    : "Firebase Auth runtime did not start. Проверьте соединение и настройки Firebase.";
+    : "Firebase Auth runtime did not start. Check your connection and Firebase settings.";
 
 const reportBootFailure = (runtime: FirebaseBootWindow, error: unknown) => {
   const message = getBootErrorMessage(error);
@@ -200,7 +200,7 @@ export default function FirebaseAuthBoot() {
                 cleanup();
                 reject(
                   new Error(
-                    "Firebase Auth runtime did not start. Проверьте соединение и настройки Firebase."
+                    "Firebase Auth runtime did not start. Check your connection and Firebase settings."
                   )
                 );
               }, AUTH_RUNTIME_INSTALL_TIMEOUT_MS);

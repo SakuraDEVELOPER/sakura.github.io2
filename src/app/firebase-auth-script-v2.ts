@@ -912,7 +912,7 @@
     if (!canUseEnhancedAvatarMedia(roles)) {
       throw createFirebaseError(
         "avatar/upgrade-required",
-        "Вам нужно повышение профиля, чтобы использовать GIF и видео в аватаре. Для роли user доступны только статичные картинки."
+        "You need a profile upgrade to use GIFs and videos as your avatar. The user role supports static images only."
       );
     }
   };

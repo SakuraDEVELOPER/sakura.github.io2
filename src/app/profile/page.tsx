@@ -355,7 +355,7 @@ const getProfileActionErrorMessage = (error: unknown, fallback: string) => {
   }
 
   if (code === "auth/email-not-verified") {
-    return "Подтвердите почту, прежде чем пользоваться профилем и комментариями.";
+    return "Verify your email before using the profile and comments.";
   }
 
   if (code === "avatar/action-timeout") {
@@ -381,7 +381,7 @@ const getSupabaseCommentMediaUnavailableMessage = () =>
 const getSupabaseAvatarUnavailableMessage = () =>
   "Supabase avatar upload is not configured for this build yet. Add NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, and NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET to the deployed site build.";
 const USER_AVATAR_UPGRADE_MESSAGE =
-  "Вам нужно повышение профиля, чтобы использовать GIF и видео в аватаре. Для роли user доступны только статичные картинки.";
+  "You need a profile upgrade to use GIFs and videos as your avatar. The user role supports static images only.";
 const toCommentMediaPayload = (
   uploadResult: SupabaseCommentMediaUploadResult
 ): CommentMediaPayload => ({
@@ -4300,7 +4300,7 @@ export default function ProfilePage() {
                   </div>
                 ) : visibleCurrentUser && isCurrentAccountVerificationLocked ? (
                   <div className="mt-5 rounded-[24px] border border-[#4d3024] bg-[linear-gradient(180deg,#1a110d_0%,#120d0a_100%)] px-4 py-4">
-                    <p className="text-sm leading-relaxed text-[#f3d2c5]">Подтвердите почту, чтобы открыть профиль и пользоваться комментариями.</p>
+                    <p className="text-sm leading-relaxed text-[#f3d2c5]">Verify your email to open the profile and use comments.</p>
                   </div>
                 ) : (
                   <div className="mt-5 rounded-[24px] border border-[#1d1d1d] bg-[#090909] px-4 py-4">
@@ -4505,7 +4505,7 @@ export default function ProfilePage() {
 
               {isOwner && isProfileControlsOpen && shouldShowVerificationBanner ? <div className="rounded-[32px] border border-[#4d3024] bg-[linear-gradient(180deg,#1a110d_0%,#120d0a_100%)] px-7 py-7 shadow-[0_0_60px_rgba(255,183,197,0.06)]">
                 <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-[#ffb7c5]">Email not verified</p>
-                <p className="mt-3 text-sm leading-relaxed text-[#f3d2c5]">Подтвердите почту, чтобы сохранить доступ к аккаунту и восстановлению входа.</p>
+                <p className="mt-3 text-sm leading-relaxed text-[#f3d2c5]">Verify your email to keep account access and login recovery enabled.</p>
                 <div className="mt-5 flex flex-wrap items-center gap-3">
                   <button type="button" onClick={handleResendVerification} disabled={isVerificationSending} className="inline-flex items-center justify-center rounded-full border border-[#ffb7c5]/30 bg-[#ffb7c5] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-black transition hover:bg-[#ffc8d3] disabled:cursor-not-allowed disabled:opacity-60">{isVerificationSending ? "Sending..." : "Resend verification email"}</button>
                 </div>
