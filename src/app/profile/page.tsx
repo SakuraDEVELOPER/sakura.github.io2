@@ -183,6 +183,7 @@ const PRESENCE_ACTIVE_WINDOW_MS = 90 * 1000;
 const SITE_ONLINE_COUNT_REFRESH_INTERVAL_MS = 20 * 1000;
 const SITE_ONLINE_COUNT_REFRESH_DEBOUNCE_MS = 280;
 const PROFILE_NAV_SCAN_LIMIT = 300;
+const PROFILE_NAV_PREFETCH_PER_SIDE = 2;
 const PROFILE_THEME_TIMELINE_UPDATE_STEP_SECONDS = 0.24;
 const STALE_RUNTIME_RECOVERY_STORAGE_KEY = "sakura-stale-runtime-recovery-at";
 const STALE_RUNTIME_RECOVERY_COUNT_STORAGE_KEY = "sakura-stale-runtime-recovery-count";
@@ -1825,14 +1826,12 @@ export default function ProfilePage() {
     }
 
     const currentProfileId = typeof profile?.profileId === "number" ? profile.profileId : null;
-    const neighborProfileIds = [previousProfileId, nextProfileId].filter(
-      (profileId): profileId is number =>
-        typeof profileId === "number" &&
-        profileId > 0 &&
-        profileId !== currentProfileId
-    );
+    if (!currentProfileId) {
+      return;
+    }
 
-    neighborProfileIds.forEach((neighborProfileId) => {
+    let isCancelled = false;
+    const prefetchProfileById = (neighborProfileId: number) => {
       if (
         prefetchedNeighborProfileIdsRef.current.has(neighborProfileId) ||
         prefetchingNeighborProfileIdsRef.current.has(neighborProfileId)
@@ -1872,14 +1871,57 @@ export default function ProfilePage() {
           prefetchedNeighborProfileIdsRef.current.add(neighborProfileId);
         }
       })();
-    });
+    };
+    const resolveNeighborProfileIds = async (startId: number, step: -1 | 1, count: number) => {
+      const resolvedProfileIds: number[] = [];
+      let candidateProfileId = startId + step;
+
+      for (
+        let scanIndex = 0;
+        scanIndex < PROFILE_NAV_SCAN_LIMIT &&
+        candidateProfileId > 0 &&
+        resolvedProfileIds.length < count;
+        scanIndex += 1, candidateProfileId += step
+      ) {
+        try {
+          const candidateProfile = await bridge.getProfileById(candidateProfileId);
+
+          if (
+            candidateProfile &&
+            typeof candidateProfile.profileId === "number" &&
+            !resolvedProfileIds.includes(candidateProfile.profileId)
+          ) {
+            resolvedProfileIds.push(candidateProfile.profileId);
+          }
+        } catch {}
+      }
+
+      return resolvedProfileIds;
+    };
+
+    void (async () => {
+      const [leftNeighborProfileIds, rightNeighborProfileIds] = await Promise.all([
+        resolveNeighborProfileIds(currentProfileId, -1, PROFILE_NAV_PREFETCH_PER_SIDE),
+        resolveNeighborProfileIds(currentProfileId, 1, PROFILE_NAV_PREFETCH_PER_SIDE),
+      ]);
+
+      if (isCancelled) {
+        return;
+      }
+
+      [...leftNeighborProfileIds, ...rightNeighborProfileIds].forEach((neighborProfileId) => {
+        prefetchProfileById(neighborProfileId);
+      });
+    })();
+
+    return () => {
+      isCancelled = true;
+    };
   }, [
     authReady,
     authStateSettled,
     authError,
     profile?.profileId,
-    previousProfileId,
-    nextProfileId,
   ]);
 
   useEffect(() => {
