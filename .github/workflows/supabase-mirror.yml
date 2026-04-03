@@ -40,6 +40,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Check mojibake
+        run: npm run check:mojibake
+
       - name: Validate migration secrets
         run: |
           test -n "$FIREBASE_PROJECT_ID" || (echo "Missing FIREBASE_PROJECT_ID" && exit 1)

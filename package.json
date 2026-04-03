@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "check:mojibake": "node scripts/check-mojibake.mjs",
     "migrate:profiles:supabase": "node scripts/migrate-firebase-profiles-to-supabase.mjs",
     "migrate:comments:supabase": "node scripts/migrate-firebase-comments-to-supabase.mjs",
     "migrate:presence:supabase": "node scripts/migrate-firebase-presence-to-supabase.mjs",
