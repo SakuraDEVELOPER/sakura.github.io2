@@ -4204,14 +4204,14 @@ export default function ProfilePage() {
                     <div className="min-w-0">
                       <h1 style={profileHeadlineStyle} className="min-w-0 truncate text-3xl font-black uppercase tracking-tighter">{primaryName}</h1>
                       {hasUsername ? <p className="mt-2 text-sm font-medium text-[#c7d4cc]">@{activeProfile.login}</p> : isOwner ? <p className="mt-2 text-sm text-gray-500">Login not set yet.</p> : null}
-                      <p className="mt-2 inline-flex max-w-full items-center gap-2 text-[11px] text-[#b78a95]">
-                        <span aria-hidden="true" className="inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-[#ff9fbd] shadow-[0_0_10px_rgba(255,159,189,0.7)]" />
-                        <span className="truncate">Account created {formatTime(activeProfile.creationTime)}</span>
-                      </p>
                       {typeof activeProfile.profileId === "number" ? <p className="mt-1.5 inline-flex max-w-full items-center gap-2 text-[11px] text-[#b78a95]">
                         <span aria-hidden="true" className="inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-[#ff9fbd] shadow-[0_0_10px_rgba(255,159,189,0.7)]" />
                         <span className="truncate">ID: {activeProfile.profileId}</span>
                       </p> : null}
+                      <p className={`${typeof activeProfile.profileId === "number" ? "mt-1" : "mt-1.5"} inline-flex max-w-full items-center gap-2 text-[11px] text-[#b78a95]`}>
+                        <span aria-hidden="true" className="inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-[#ff9fbd] shadow-[0_0_10px_rgba(255,159,189,0.7)]" />
+                        <span className="truncate">Account created {formatTime(activeProfile.creationTime)}</span>
+                      </p>
                     </div>
                     <div className="mt-4 flex flex-wrap items-center gap-3">
                       {profileRoles.map((role) => <span key={role} title={roleBadgeLabel(role)} style={{ ...roleBadgeStyle(role), ...roleBadgeTextStyle }} className="inline-flex min-h-[26px] shrink-0 items-center whitespace-nowrap rounded-full border px-3.5 py-1 text-[10px] font-bold"><span aria-hidden="true" className="inline-flex items-center">{renderRoleBadgeText(role)}</span></span>)}
@@ -4368,8 +4368,8 @@ export default function ProfilePage() {
                                 disabled={isCommentActionMenuBusy}
                                 className={`inline-flex h-7 w-7 items-center justify-center rounded-full border transition disabled:cursor-not-allowed disabled:opacity-60 ${
                                   isCommentActionsMenuOpen
-                                    ? "border-[#ffb7c5]/45 bg-[#1a1014] text-[#ffb7c5] shadow-[0_0_16px_rgba(255,183,197,0.16)]"
-                                    : "border-[#2f2328] bg-[#0f0a0d]/90 text-[#b78a95] hover:border-[#ffb7c5]/38 hover:text-[#ffb7c5]"
+                                    ? "border-[#ffb7c5]/45 bg-transparent text-[#ffb7c5] shadow-none"
+                                    : "border-[#2f2328] bg-transparent text-[#b78a95] hover:border-[#ffb7c5]/38 hover:text-[#ffb7c5]"
                                 }`}
                               >
                                 <span className="inline-flex items-center gap-0.5">
@@ -4378,7 +4378,7 @@ export default function ProfilePage() {
                                   <span className="h-1 w-1 rounded-full bg-current" />
                                 </span>
                               </button>
-                              {isCommentActionsMenuOpen ? <div className="absolute right-0 top-0 z-20 translate-x-[calc(100%+8px)] rounded-[16px] border border-[#3a2a31] bg-[#0f0a0d] p-2 shadow-[0_0_24px_rgba(255,183,197,0.12)] max-[900px]:right-0 max-[900px]:top-full max-[900px]:mt-2 max-[900px]:translate-x-0">
+                              {isCommentActionsMenuOpen ? <div className="absolute right-0 top-0 z-20 translate-x-[calc(100%+8px)] p-0 max-[900px]:right-0 max-[900px]:top-full max-[900px]:mt-2 max-[900px]:translate-x-0">
                                 <div className="flex min-w-[124px] flex-col gap-1.5">
                                   {isConfirmingCommentDelete ? <>
                                     <button type="button" onClick={() => handleCommentDelete(comment.id)} disabled={isDeletingComment || isSavingCommentUpdate} className="inline-flex items-center justify-center rounded-full border border-[#ffb7c5]/30 bg-[#ffb7c5] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-black transition hover:bg-[#ffc8d3] disabled:cursor-not-allowed disabled:opacity-60">{isDeletingComment ? "Deleting..." : "Yes"}</button>
