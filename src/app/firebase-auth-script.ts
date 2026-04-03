@@ -1913,7 +1913,7 @@
       runtimePendingLookupCache.set(pendingKey, pendingLookup);
       return pendingLookup;
     };
-    const cacheResolvedProfileSnapshot = (snapshot) => {
+    function cacheResolvedProfileSnapshot(snapshot) {
       if (!snapshot || snapshot.isAnonymous) {
         return snapshot;
       }
@@ -1949,7 +1949,7 @@
       }
 
       return snapshot;
-    };
+    }
 
     const findUserByLogin = async (loginLower) => {
       const snapshot = await getDocs(
