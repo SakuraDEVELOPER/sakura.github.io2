@@ -3117,6 +3117,10 @@ export default function ProfilePage() {
       .getProfileComments(activeProfile.profileId)
       .then((nextComments) => {
         if (isCancelled) return;
+        if (!nextComments.length && cachedComments.length) {
+          setComments(cachedComments);
+          return;
+        }
         setComments(nextComments);
       })
       .catch((error) => {

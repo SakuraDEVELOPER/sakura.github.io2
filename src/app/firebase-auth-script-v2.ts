@@ -3242,13 +3242,18 @@
         return cachedComments.value;
       }
 
-      const cacheComments = (comments) =>
-        writeRuntimeCacheEntry(
-          profileCommentsByIdRuntimeCache,
-          commentsCacheKey,
-          comments,
-          PROFILE_COMMENTS_RUNTIME_CACHE_TTL_MS
-        );
+      const cacheComments = (comments) => {
+        if (Array.isArray(comments) && comments.length > 0) {
+          return writeRuntimeCacheEntry(
+            profileCommentsByIdRuntimeCache,
+            commentsCacheKey,
+            comments,
+            PROFILE_COMMENTS_RUNTIME_CACHE_TTL_MS
+          );
+        }
+
+        return comments;
+      };
 
       const fetchSupabaseCommentsWithTimeout = () =>
         withTimeout(
@@ -3303,7 +3308,7 @@
 
       const supabaseComments = supabaseFastComments ?? await fetchSupabaseCommentsWithTimeout().catch(() => null);
 
-      if (supabaseComments) {
+      if (Array.isArray(supabaseComments) && supabaseComments.length > 0) {
         return cacheComments(supabaseComments);
       }
 
@@ -3331,7 +3336,7 @@
         if (isPermissionDeniedError(error)) {
           const fallbackSupabaseComments = await fetchSupabaseCommentsWithTimeout().catch(() => null);
 
-          if (fallbackSupabaseComments) {
+          if (Array.isArray(fallbackSupabaseComments) && fallbackSupabaseComments.length > 0) {
             return cacheComments(fallbackSupabaseComments);
           }
 
