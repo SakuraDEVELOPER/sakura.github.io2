@@ -2933,6 +2933,12 @@
         PROFILE_RUNTIME_CACHE_TTL_MS,
         "profile-by-id:" + profileId,
         async () => {
+          const supabaseFastProfile = await fetchSupabaseProfileById(profileId).catch(() => null);
+
+          if (supabaseFastProfile && hasProfileAvatarData(supabaseFastProfile)) {
+            return cacheResolvedProfileSnapshot(supabaseFastProfile);
+          }
+
           const readProfileDoc = async () =>
             withTimeout(
               findUserByProfileId(profileId),
@@ -2994,7 +3000,7 @@
             }
           }
 
-          const supabaseProfile = await fetchSupabaseProfileById(profileId);
+          const supabaseProfile = supabaseFastProfile ?? await fetchSupabaseProfileById(profileId);
 
           if (supabaseProfile) {
             return supabaseProfile;
@@ -3056,6 +3062,12 @@
         PROFILE_RUNTIME_CACHE_TTL_MS,
         "profile-by-author:" + normalizedAuthorName,
         async () => {
+          const supabaseFastProfile = await fetchSupabaseProfileByAuthorName(normalizedAuthorName).catch(() => null);
+
+          if (supabaseFastProfile && hasProfileAvatarData(supabaseFastProfile)) {
+            return cacheResolvedProfileSnapshot(supabaseFastProfile);
+          }
+
           const readProfileDoc = async () =>
             withTimeout(
               findUserByAuthorName(normalizedAuthorName),
@@ -3117,7 +3129,8 @@
             }
           }
 
-          const supabaseProfile = await fetchSupabaseProfileByAuthorName(normalizedAuthorName);
+          const supabaseProfile =
+            supabaseFastProfile ?? await fetchSupabaseProfileByAuthorName(normalizedAuthorName);
 
           if (supabaseProfile) {
             return supabaseProfile;
@@ -3215,6 +3228,12 @@
         throw createFirebaseError("profile/invalid-id", "Profile id must be a positive number.");
       }
 
+      const supabaseFastComments = await fetchSupabaseCommentsByProfileId(profileId).catch(() => null);
+
+      if (supabaseFastComments && supabaseFastComments.length) {
+        return supabaseFastComments;
+      }
+
       const readComments = async () => {
         const snapshot = await getDocs(
           query(profileCommentsCollection, where("profileId", "==", profileId))
@@ -3248,7 +3267,7 @@
         }
       }
 
-      const supabaseComments = await fetchSupabaseCommentsByProfileId(profileId);
+      const supabaseComments = supabaseFastComments ?? await fetchSupabaseCommentsByProfileId(profileId);
 
       if (supabaseComments) {
         return supabaseComments;

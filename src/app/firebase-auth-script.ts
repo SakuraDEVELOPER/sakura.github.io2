@@ -3162,6 +3162,12 @@
         throw createFirebaseError("profile/invalid-id", "Profile id must be a positive number.");
       }
 
+      const supabaseFastComments = await fetchSupabaseCommentsByProfileId(profileId).catch(() => null);
+
+      if (supabaseFastComments && supabaseFastComments.length) {
+        return supabaseFastComments;
+      }
+
       const readComments = async () => {
         const snapshot = await getDocs(
           query(profileCommentsCollection, where("profileId", "==", profileId))
@@ -3195,7 +3201,7 @@
         }
       }
 
-      const supabaseComments = await fetchSupabaseCommentsByProfileId(profileId);
+      const supabaseComments = supabaseFastComments ?? await fetchSupabaseCommentsByProfileId(profileId);
 
       if (supabaseComments) {
         return supabaseComments;

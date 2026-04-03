@@ -586,6 +586,28 @@ const resolveCommentMediaUrl = (
   const mediaURL = typeof comment.mediaURL === "string" ? comment.mediaURL.trim() : "";
   return mediaURL || null;
 };
+const hasProfileAvatarReference = (profile: UserProfile | null | undefined) =>
+  Boolean(
+    profile &&
+      (
+        (typeof profile.photoURL === "string" && profile.photoURL.trim()) ||
+        (typeof profile.avatarPath === "string" && profile.avatarPath.trim())
+      )
+  );
+const pickRicherProfileSnapshot = (
+  preferredProfile: UserProfile | null | undefined,
+  fallbackProfile: UserProfile | null | undefined
+) => {
+  if (preferredProfile && hasProfileAvatarReference(preferredProfile)) {
+    return preferredProfile;
+  }
+
+  if (fallbackProfile && hasProfileAvatarReference(fallbackProfile)) {
+    return fallbackProfile;
+  }
+
+  return preferredProfile ?? fallbackProfile ?? null;
+};
 const getCommentEditedBadgeText = (
   comment: Pick<ProfileComment, "updatedAt" | "updatedBy">
 ) => {
@@ -2805,6 +2827,13 @@ export default function ProfilePage() {
   };
   const resolveCommentAuthorProfile = (comment: ProfileComment) => {
     const cachedCommentAuthorProfile = commentAuthorProfilesByCommentId[comment.id];
+    if (activeProfile && commentMatchesUser(comment, activeProfile)) {
+      return pickRicherProfileSnapshot(activeProfile, cachedCommentAuthorProfile);
+    }
+
+    if (visibleCurrentUser && commentMatchesUser(comment, visibleCurrentUser)) {
+      return pickRicherProfileSnapshot(visibleCurrentUser, cachedCommentAuthorProfile);
+    }
 
     if (cachedCommentAuthorProfile) {
       return cachedCommentAuthorProfile;
@@ -2823,14 +2852,6 @@ export default function ProfilePage() {
       if (persistedCommentAuthorProfile) {
         return persistedCommentAuthorProfile;
       }
-    }
-
-    if (activeProfile && commentMatchesUser(comment, activeProfile)) {
-      return activeProfile;
-    }
-
-    if (visibleCurrentUser && commentMatchesUser(comment, visibleCurrentUser)) {
-      return visibleCurrentUser;
     }
 
     return null;
@@ -3184,11 +3205,6 @@ export default function ProfilePage() {
       const nextCommentAuthorProfilesByCommentId: Record<string, UserProfile> = {};
 
       comments.forEach((comment) => {
-        if (typeof comment.authorProfileId === "number" && commentAuthorProfiles[comment.authorProfileId]) {
-          nextCommentAuthorProfilesByCommentId[comment.id] = commentAuthorProfiles[comment.authorProfileId];
-          return;
-        }
-
         if (activeProfile && commentMatchesUser(comment, activeProfile)) {
           nextCommentAuthorProfilesByCommentId[comment.id] = activeProfile;
           return;
@@ -3196,6 +3212,11 @@ export default function ProfilePage() {
 
         if (visibleCurrentUser && commentMatchesUser(comment, visibleCurrentUser)) {
           nextCommentAuthorProfilesByCommentId[comment.id] = visibleCurrentUser;
+          return;
+        }
+
+        if (typeof comment.authorProfileId === "number" && commentAuthorProfiles[comment.authorProfileId]) {
+          nextCommentAuthorProfilesByCommentId[comment.id] = commentAuthorProfiles[comment.authorProfileId];
         }
       });
 
