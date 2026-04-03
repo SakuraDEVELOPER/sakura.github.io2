@@ -176,7 +176,9 @@ const PROFILE_THEME_SONG_BY_PROFILE_ID = new Map<number, string>([
 const COMMENT_MEDIA_FILE_ACCEPT = ".png,.jpg,.jpeg,.webp,.gif,.mp4,.webm";
 const PRESENCE_ACTIVE_WINDOW_MS = 90 * 1000;
 const STALE_RUNTIME_RECOVERY_STORAGE_KEY = "sakura-stale-runtime-recovery-at";
-const STALE_RUNTIME_RECOVERY_COOLDOWN_MS = 20_000;
+const STALE_RUNTIME_RECOVERY_COUNT_STORAGE_KEY = "sakura-stale-runtime-recovery-count";
+const STALE_RUNTIME_RECOVERY_COOLDOWN_MS = 5 * 60 * 1000;
+const STALE_RUNTIME_RECOVERY_MAX_PER_SESSION = 1;
 const STALE_RUNTIME_ERROR_PATTERNS = [
   /cacheResolvedProfileSnapshot is not defined/i,
   /AUTH_RUNTIME_INSTALLED_EVENT is not defined/i,
@@ -220,6 +222,16 @@ const recoverFromStaleRuntime = () => {
   }
 
   try {
+    const recoveryCount = Number(
+      window.sessionStorage.getItem(STALE_RUNTIME_RECOVERY_COUNT_STORAGE_KEY) || "0"
+    );
+    if (
+      Number.isFinite(recoveryCount) &&
+      recoveryCount >= STALE_RUNTIME_RECOVERY_MAX_PER_SESSION
+    ) {
+      return false;
+    }
+
     const lastRecoveryAt = Number(
       window.sessionStorage.getItem(STALE_RUNTIME_RECOVERY_STORAGE_KEY) || "0"
     );
@@ -234,6 +246,10 @@ const recoverFromStaleRuntime = () => {
     window.sessionStorage.setItem(
       STALE_RUNTIME_RECOVERY_STORAGE_KEY,
       String(Date.now())
+    );
+    window.sessionStorage.setItem(
+      STALE_RUNTIME_RECOVERY_COUNT_STORAGE_KEY,
+      String(Number.isFinite(recoveryCount) ? recoveryCount + 1 : 1)
     );
   } catch {}
 
@@ -1334,6 +1350,13 @@ export default function ProfilePage() {
     let unsubscribe: () => void = () => {};
     const sync = () => {
       if (hasCurrentFirebaseAuthRuntime(runtime) && runtime.sakuraFirebaseAuth) {
+        try {
+          const currentUrl = new URL(window.location.href);
+          if (currentUrl.searchParams.has("__runtime_recover")) {
+            currentUrl.searchParams.delete("__runtime_recover");
+            window.history.replaceState(null, "", currentUrl.pathname + currentUrl.search + currentUrl.hash);
+          }
+        } catch {}
         setAuthReady(true);
         setAuthStateSettled(Boolean(runtime.sakuraAuthStateSettled));
         setAuthError(null);

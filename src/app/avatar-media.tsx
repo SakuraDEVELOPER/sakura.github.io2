@@ -110,11 +110,13 @@ export function AvatarMedia({
   const [renderKey, setRenderKey] = useState(0);
   const [hasLoadError, setHasLoadError] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [retryAttempt, setRetryAttempt] = useState(0);
 
   useEffect(() => {
     let objectUrl: string | null = null;
     setHasLoadError(false);
     setIsLoaded(false);
+    setRetryAttempt(0);
 
     if (!isAnimatedAvatarSource(src)) {
       setResolvedSrc(src);
@@ -139,6 +141,23 @@ export function AvatarMedia({
       }
     };
   }, [src]);
+
+  useEffect(() => {
+    if (!hasLoadError || retryAttempt >= 2) {
+      return;
+    }
+
+    const retryTimeoutId = window.setTimeout(() => {
+      setHasLoadError(false);
+      setIsLoaded(false);
+      setRetryAttempt((currentAttempt) => currentAttempt + 1);
+      setRenderKey((currentKey) => currentKey + 1);
+    }, 1200);
+
+    return () => {
+      window.clearTimeout(retryTimeoutId);
+    };
+  }, [hasLoadError, retryAttempt]);
 
   if (!resolvedSrc || hasLoadError) {
     return (
