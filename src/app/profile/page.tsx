@@ -4214,7 +4214,7 @@ export default function ProfilePage() {
                       </p>
                     </div>
                     <div className="mt-3 flex flex-wrap items-center gap-3 sm:mt-auto">
-                      {profileRoles.map((role) => <span key={role} title={roleBadgeLabel(role)} style={{ ...roleBadgeStyle(role), ...roleBadgeTextStyle, minWidth: 104, height: 30 }} className="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-full border px-3 py-1 text-[10px] font-bold"><span aria-hidden="true" className="inline-flex items-center">{renderRoleBadgeText(role)}</span></span>)}
+                      {profileRoles.map((role) => <span key={role} title={roleBadgeLabel(role)} style={{ ...roleBadgeStyle(role), ...roleBadgeTextStyle, height: 30 }} className="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-full border px-3 py-1 text-[10px] font-bold"><span aria-hidden="true" className="inline-flex items-center">{renderRoleBadgeText(role)}</span></span>)}
                     </div>
                   </div>
                 </div>
