@@ -173,6 +173,12 @@ declare global {
 }
 
 const FIREBASE_AUTH_RUNTIME_VERSION = "2026-04-03-runtime-v1";
+const STALE_RUNTIME_RECOVERY_STORAGE_KEY = "sakura-stale-runtime-recovery-at";
+const STALE_RUNTIME_RECOVERY_COOLDOWN_MS = 20_000;
+const STALE_RUNTIME_ERROR_PATTERNS = [
+  /cacheResolvedProfileSnapshot is not defined/i,
+  /AUTH_RUNTIME_INSTALLED_EVENT is not defined/i,
+];
 
 const requestFirebaseAuthBoot = () => {
   if (typeof window === "undefined") {
@@ -187,6 +193,45 @@ const hasCurrentFirebaseAuthRuntime = () =>
   Boolean(window.sakuraFirebaseAuth) &&
   window.sakuraFirebaseRuntimeVersion === FIREBASE_AUTH_RUNTIME_VERSION &&
   window.sakuraFirebaseAuth?.__runtimeVersion === FIREBASE_AUTH_RUNTIME_VERSION;
+const getErrorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : typeof error === "string" ? error : "";
+const isRecoverableStaleRuntimeError = (error: unknown) =>
+  STALE_RUNTIME_ERROR_PATTERNS.some((pattern) => pattern.test(getErrorMessage(error)));
+const recoverFromStaleRuntime = () => {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  try {
+    const lastRecoveryAt = Number(
+      window.sessionStorage.getItem(STALE_RUNTIME_RECOVERY_STORAGE_KEY) || "0"
+    );
+
+    if (
+      Number.isFinite(lastRecoveryAt) &&
+      Date.now() - lastRecoveryAt < STALE_RUNTIME_RECOVERY_COOLDOWN_MS
+    ) {
+      return false;
+    }
+
+    window.sessionStorage.setItem(
+      STALE_RUNTIME_RECOVERY_STORAGE_KEY,
+      String(Date.now())
+    );
+  } catch {}
+
+  delete window.sakuraFirebaseAuth;
+  delete window.sakuraFirebaseAuthError;
+  delete window.sakuraFirebaseRuntimeVersion;
+  delete window.sakuraBootFirebaseAuth;
+  delete window.sakuraStartFirebaseAuth;
+  window.sakuraAuthStateSettled = false;
+
+  const nextUrl = new URL(window.location.href);
+  nextUrl.searchParams.set("__runtime_recover", String(Date.now()));
+  window.location.replace(nextUrl.toString());
+  return true;
+};
 
 const getAuthBridgeErrorMessage = (event: Event | undefined, fallback: string) => {
   if (typeof window !== "undefined" && window.sakuraFirebaseAuthError) {
@@ -769,12 +814,16 @@ function HeaderAuth() {
     };
 
     const handleError = (event: Event) => {
-      setAuthLoadError(
-        getAuthBridgeErrorMessage(
-          event,
-          "Firebase Auth module did not load. Проверьте соединение и настройки Firebase."
-        )
+      const message = getAuthBridgeErrorMessage(
+        event,
+        "Firebase Auth module did not load. Проверьте соединение и настройки Firebase."
       );
+
+      if (isRecoverableStaleRuntimeError(message) && recoverFromStaleRuntime()) {
+        return;
+      }
+
+      setAuthLoadError(message);
     };
 
     const timeoutId = window.setTimeout(() => {

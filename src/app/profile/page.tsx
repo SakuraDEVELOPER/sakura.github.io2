@@ -174,6 +174,12 @@ const PROFILE_THEME_SONG_BY_PROFILE_ID = new Map<number, string>([
 ]);
 const COMMENT_MEDIA_FILE_ACCEPT = ".png,.jpg,.jpeg,.webp,.gif,.mp4,.webm";
 const PRESENCE_ACTIVE_WINDOW_MS = 90 * 1000;
+const STALE_RUNTIME_RECOVERY_STORAGE_KEY = "sakura-stale-runtime-recovery-at";
+const STALE_RUNTIME_RECOVERY_COOLDOWN_MS = 20_000;
+const STALE_RUNTIME_ERROR_PATTERNS = [
+  /cacheResolvedProfileSnapshot is not defined/i,
+  /AUTH_RUNTIME_INSTALLED_EVENT is not defined/i,
+];
 const restoreProfilePathScript = `
   (function () {
     try {
@@ -202,6 +208,46 @@ const hasCurrentFirebaseAuthRuntime = (runtime: RuntimeWindow) =>
   Boolean(runtime.sakuraFirebaseAuth) &&
   runtime.sakuraFirebaseRuntimeVersion === FIREBASE_AUTH_RUNTIME_VERSION &&
   runtime.sakuraFirebaseAuth?.__runtimeVersion === FIREBASE_AUTH_RUNTIME_VERSION;
+const getErrorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : typeof error === "string" ? error : "";
+const isRecoverableStaleRuntimeError = (error: unknown) =>
+  STALE_RUNTIME_ERROR_PATTERNS.some((pattern) => pattern.test(getErrorMessage(error)));
+const recoverFromStaleRuntime = () => {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  try {
+    const lastRecoveryAt = Number(
+      window.sessionStorage.getItem(STALE_RUNTIME_RECOVERY_STORAGE_KEY) || "0"
+    );
+
+    if (
+      Number.isFinite(lastRecoveryAt) &&
+      Date.now() - lastRecoveryAt < STALE_RUNTIME_RECOVERY_COOLDOWN_MS
+    ) {
+      return false;
+    }
+
+    window.sessionStorage.setItem(
+      STALE_RUNTIME_RECOVERY_STORAGE_KEY,
+      String(Date.now())
+    );
+  } catch {}
+
+  const runtime = getWindowState();
+  delete runtime.sakuraFirebaseAuth;
+  delete runtime.sakuraFirebaseAuthError;
+  delete runtime.sakuraFirebaseRuntimeVersion;
+  delete runtime.sakuraBootFirebaseAuth;
+  delete runtime.sakuraStartFirebaseAuth;
+  runtime.sakuraAuthStateSettled = false;
+
+  const nextUrl = new URL(window.location.href);
+  nextUrl.searchParams.set("__runtime_recover", String(Date.now()));
+  window.location.replace(nextUrl.toString());
+  return true;
+};
 
 const getAuthBridgeErrorMessage = (event: Event | undefined, fallback: string) => {
   if (typeof window !== "undefined" && getWindowState().sakuraFirebaseAuthError) {
@@ -1304,12 +1350,18 @@ export default function ProfilePage() {
     };
     const onUserUpdate = () => setCurrentUser(getWindowState().sakuraCurrentUserSnapshot ?? null);
     const onError = (event: Event) =>
-      setAuthError(
-        getAuthBridgeErrorMessage(
+      {
+        const message = getAuthBridgeErrorMessage(
           event,
           "Firebase Auth is still loading. Reload the page if this does not clear soon."
-        )
-      );
+        );
+
+        if (isRecoverableStaleRuntimeError(message) && recoverFromStaleRuntime()) {
+          return;
+        }
+
+        setAuthError(message);
+      };
     const timeoutId = window.setTimeout(() => {
       const currentRuntime = getWindowState();
       if (
@@ -1369,6 +1421,10 @@ export default function ProfilePage() {
         if (window.location.pathname !== profilePath(requestedId)) window.history.replaceState(null, "", profilePath(requestedId));
       })
       .catch((error) => {
+        if (isRecoverableStaleRuntimeError(error) && recoverFromStaleRuntime()) {
+          return;
+        }
+
         setProfile(null);
         setProfileError(error instanceof Error ? error.message : "Could not load this profile.");
       })
