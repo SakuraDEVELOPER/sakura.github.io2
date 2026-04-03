@@ -102,7 +102,6 @@
   const DISPLAY_NAME_MAX_LENGTH = 48;
   const USER_UPDATE_EVENT = "sakura-user-update";
   const AUTH_ERROR_EVENT = "sakura-auth-error";
-  const AUTH_RUNTIME_INSTALLED_EVENT = "sakura-auth-runtime-installed";
   const AUTH_STATE_SETTLED_EVENT = "sakura-auth-state-settled";
   const PRESENCE_DIRTY_EVENT = "sakura-presence-dirty";
   const CURRENT_PROFILE_ID_STORAGE_KEY = "sakura-current-profile-id";
@@ -4368,7 +4367,7 @@
     };
 
     window.sakuraStartFirebaseAuth = startFirebaseAuth;
-    window.dispatchEvent(new CustomEvent(AUTH_RUNTIME_INSTALLED_EVENT));
+    window.dispatchEvent(new CustomEvent("sakura-auth-runtime-installed"));
     startFirebaseAuth();
   })();
 `;
