@@ -1003,6 +1003,16 @@
 
     return null;
   };
+  const normalizeProfileCommentUpdatedBy = (value) => {
+    const normalized =
+      typeof value === "string" ? value.trim().toLowerCase() : "";
+
+    if (normalized === "author" || normalized === "admin") {
+      return normalized;
+    }
+
+    return null;
+  };
   const stripNullishFields = (value) =>
     Object.fromEntries(
       Object.entries(value).filter(([, entryValue]) => entryValue !== null && entryValue !== undefined)
@@ -1030,6 +1040,7 @@
     mediaSize: normalizeProfileCommentMediaSize(details.mediaSize),
     createdAt: normalizeProfileCommentCreatedAt(details.createdAt),
     updatedAt: normalizeProfileCommentCreatedAt(details.updatedAt),
+    updatedBy: normalizeProfileCommentUpdatedBy(details.updatedBy),
   });
   const sortProfileComments = (comments) =>
     [...comments].sort(
@@ -3483,6 +3494,7 @@
       }
 
       const updatedAt = new Date().toISOString();
+      const updatedBy = isAuthor ? "author" : "admin";
 
       try {
         await setDoc(
@@ -3494,6 +3506,7 @@
             mediaPath: finalMediaPath,
             mediaSize: finalMediaSize,
             updatedAt,
+            updatedBy,
           },
           { merge: true }
         );
@@ -3523,6 +3536,7 @@
         mediaPath: finalMediaPath,
         mediaSize: finalMediaSize,
         updatedAt,
+        updatedBy,
       });
     };
 

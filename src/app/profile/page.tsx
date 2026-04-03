@@ -58,6 +58,7 @@ type ProfileComment = {
   mediaSize?: number | null;
   createdAt: string | null;
   updatedAt?: string | null;
+  updatedBy?: "author" | "admin" | null;
   pending?: boolean;
 };
 
@@ -584,6 +585,23 @@ const resolveCommentMediaUrl = (
 
   const mediaURL = typeof comment.mediaURL === "string" ? comment.mediaURL.trim() : "";
   return mediaURL || null;
+};
+const getCommentEditedBadgeText = (
+  comment: Pick<ProfileComment, "updatedAt" | "updatedBy">
+) => {
+  if (!comment.updatedAt) {
+    return null;
+  }
+
+  if (comment.updatedBy === "author") {
+    return "Edit by author";
+  }
+
+  if (comment.updatedBy === "admin") {
+    return "By admin";
+  }
+
+  return "Edited";
 };
 const redirectToLocalProfile = (requestedProfileId: number, currentProfileId: number | null) => {
   if (typeof window === "undefined") return false;
@@ -4718,6 +4736,11 @@ export default function ProfilePage() {
                         hasCommentMediaMetadata && !resolvedCommentMediaURL;
                       const commentAuthorStyle = roleCommentAuthorStyle(resolvedCommentAuthorRole);
                       const isCommentEdited = Boolean(comment.updatedAt);
+                      const commentEditedBadgeText = getCommentEditedBadgeText(comment);
+                      const commentDisplayTimestamp =
+                        isCommentEdited && comment.updatedAt
+                          ? comment.updatedAt
+                          : comment.createdAt;
 
                       return <div key={comment.id} className="rounded-[24px] border border-[#1d1d1d] bg-[#090909] px-4 py-4">
                         <div className="flex items-start justify-between gap-3">
@@ -4727,9 +4750,9 @@ export default function ProfilePage() {
                               <div className="flex min-w-0 items-center gap-2">
                                 {comment.authorProfileId ? <a href={profilePath(comment.authorProfileId)} style={commentAuthorStyle} className="min-w-0 truncate text-sm font-semibold transition hover:text-white">{comment.authorName}</a> : <p style={commentAuthorStyle} className="min-w-0 truncate text-sm font-semibold">{comment.authorName}</p>}
                                 {!isConfirmingCommentDelete && isPendingComment ? <span className="shrink-0 text-[10px] font-mono uppercase tracking-[0.16em] text-[#ffb7c5]">Sending...</span> : null}
-                                {!isConfirmingCommentDelete && isCommentEdited ? <span className="shrink-0 text-[10px] font-mono uppercase tracking-[0.16em] text-gray-500">Edited</span> : null}
+                                {!isConfirmingCommentDelete && commentEditedBadgeText ? <span className="shrink-0 text-[10px] font-mono uppercase tracking-[0.16em] text-gray-500">{commentEditedBadgeText}</span> : null}
                               </div>
-                              {!isConfirmingCommentDelete ? <p className="mt-1 text-xs text-gray-500">{formatTime(comment.createdAt)}</p> : null}
+                              {!isConfirmingCommentDelete ? <p className="mt-1 text-xs text-gray-500">{formatTime(commentDisplayTimestamp)}</p> : null}
                             </div>
                             {resolvedCommentAuthorProfile ? renderProfileHoverPreview(resolvedCommentAuthorProfile, comment.authorName, "start") : null}
                           </div>
