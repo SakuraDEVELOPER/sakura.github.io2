@@ -533,28 +533,20 @@ const resolveProfileAvatarUrl = (profile: UserProfile | null | undefined) => {
     return null;
   }
 
-  const profilePhotoUrl = typeof profile.photoURL === "string" ? profile.photoURL.trim() : "";
-  if (profilePhotoUrl) {
-    return profilePhotoUrl;
-  }
-
   const profileAvatarPath = typeof profile.avatarPath === "string" ? profile.avatarPath.trim() : "";
   if (profileAvatarPath) {
     return getSupabasePublicObjectUrl(profileAvatarPath);
+  }
+
+  const profilePhotoUrl = typeof profile.photoURL === "string" ? profile.photoURL.trim() : "";
+  if (profilePhotoUrl) {
+    return profilePhotoUrl;
   }
 
   if (typeof profile.profileId === "number" && profile.profileId > 0) {
     const cachedProfileSnapshot = readCachedProfileSnapshot<UserProfile>(profile.profileId);
 
     if (cachedProfileSnapshot) {
-      const cachedPhotoUrl =
-        typeof cachedProfileSnapshot.photoURL === "string"
-          ? cachedProfileSnapshot.photoURL.trim()
-          : "";
-      if (cachedPhotoUrl) {
-        return cachedPhotoUrl;
-      }
-
       const cachedAvatarPath =
         typeof cachedProfileSnapshot.avatarPath === "string"
           ? cachedProfileSnapshot.avatarPath.trim()
@@ -562,10 +554,30 @@ const resolveProfileAvatarUrl = (profile: UserProfile | null | undefined) => {
       if (cachedAvatarPath) {
         return getSupabasePublicObjectUrl(cachedAvatarPath);
       }
+
+      const cachedPhotoUrl =
+        typeof cachedProfileSnapshot.photoURL === "string"
+          ? cachedProfileSnapshot.photoURL.trim()
+          : "";
+      if (cachedPhotoUrl) {
+        return cachedPhotoUrl;
+      }
     }
   }
 
   return null;
+};
+const resolveCommentMediaUrl = (
+  comment: Pick<ProfileComment, "mediaPath" | "mediaURL">
+) => {
+  const mediaPath = typeof comment.mediaPath === "string" ? comment.mediaPath.trim() : "";
+
+  if (mediaPath) {
+    return getSupabasePublicObjectUrl(mediaPath);
+  }
+
+  const mediaURL = typeof comment.mediaURL === "string" ? comment.mediaURL.trim() : "";
+  return mediaURL || null;
 };
 const redirectToLocalProfile = (requestedProfileId: number, currentProfileId: number | null) => {
   if (typeof window === "undefined") return false;
@@ -4662,6 +4674,7 @@ export default function ProfilePage() {
                       const resolvedCommentAuthorProfile = resolveCommentAuthorProfile(comment);
                       const resolvedCommentAuthorRole = resolveCommentAuthorRole(comment);
                       const resolvedCommentAuthorPhotoURL = resolveCommentAuthorPhotoURL(comment);
+                      const resolvedCommentMediaURL = resolveCommentMediaUrl(comment);
                       const commentAuthorStyle = roleCommentAuthorStyle(resolvedCommentAuthorRole);
                       const isCommentEdited = Boolean(comment.updatedAt);
 
@@ -4745,18 +4758,18 @@ export default function ProfilePage() {
                           <input ref={editingCommentMediaInputRef} type="file" accept={COMMENT_MEDIA_FILE_ACCEPT} onChange={handleEditingCommentMediaChange} className="hidden" />
                           {editingCommentMediaPreviewUrl ? <div className="mt-3 overflow-hidden rounded-[22px] border border-[#232323] bg-[#050505]">
                             <CommentMediaFrame src={editingCommentMediaPreviewUrl} mediaType={editingCommentMediaFile?.type ?? null} alt="Updated comment media preview" className="block max-h-[320px] w-full object-contain" />
-                          </div> : (!isEditingCommentMediaRemoved && comment.mediaURL ? <div className="mt-3 overflow-hidden rounded-[22px] border border-[#232323] bg-[#050505]">
-                            <CommentMediaFrame src={comment.mediaURL} mediaType={comment.mediaType} alt={`${comment.authorName} comment attachment`} className="block max-h-[320px] w-full object-contain" controls={isCommentVideoMediaType(comment.mediaType)} />
+                          </div> : (!isEditingCommentMediaRemoved && resolvedCommentMediaURL ? <div className="mt-3 overflow-hidden rounded-[22px] border border-[#232323] bg-[#050505]">
+                            <CommentMediaFrame src={resolvedCommentMediaURL} mediaType={comment.mediaType} alt={`${comment.authorName} comment attachment`} className="block max-h-[320px] w-full object-contain" controls={isCommentVideoMediaType(comment.mediaType)} />
                           </div> : null)}
                           {editingCommentMediaFile ? <div className="mt-3 flex items-center">
                             <button type="button" onClick={clearEditingCommentMediaSelection} disabled={isSavingCommentUpdate} className="inline-flex items-center justify-center rounded-full border border-[#2a2a2a] bg-[#101010] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-gray-300 transition hover:border-[#4a4a4a] hover:text-white disabled:cursor-not-allowed disabled:opacity-60">Remove</button>
                           </div> : null}
-                          {!editingCommentMediaFile && comment.mediaURL && !isEditingCommentMediaRemoved ? <div className="mt-3 flex items-center">
+                          {!editingCommentMediaFile && resolvedCommentMediaURL && !isEditingCommentMediaRemoved ? <div className="mt-3 flex items-center">
                             <button type="button" onClick={removeEditingCommentMedia} disabled={isSavingCommentUpdate} className="inline-flex items-center justify-center rounded-full border border-[#2a2a2a] bg-[#101010] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-gray-300 transition hover:border-[#4a4a4a] hover:text-white disabled:cursor-not-allowed disabled:opacity-60">Remove</button>
                           </div> : null}
                           <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
                             <div className="flex flex-wrap items-center gap-3">
-                              <button type="button" onClick={() => handleCommentUpdate(comment.id)} disabled={isSavingCommentUpdate || (!editingCommentMessage.trim() && !editingCommentMediaFile && !(comment.mediaURL && !isEditingCommentMediaRemoved))} className="inline-flex items-center justify-center rounded-full border border-[#ffb7c5]/30 bg-[#ffb7c5] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-black transition hover:bg-[#ffc8d3] disabled:cursor-not-allowed disabled:opacity-60">{isSavingCommentUpdate ? "Saving..." : "Save"}</button>
+                              <button type="button" onClick={() => handleCommentUpdate(comment.id)} disabled={isSavingCommentUpdate || (!editingCommentMessage.trim() && !editingCommentMediaFile && !(resolvedCommentMediaURL && !isEditingCommentMediaRemoved))} className="inline-flex items-center justify-center rounded-full border border-[#ffb7c5]/30 bg-[#ffb7c5] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-black transition hover:bg-[#ffc8d3] disabled:cursor-not-allowed disabled:opacity-60">{isSavingCommentUpdate ? "Saving..." : "Save"}</button>
                               <button type="button" onClick={() => editingCommentMediaInputRef.current?.click()} disabled={isSavingCommentUpdate} className="inline-flex items-center justify-center rounded-full border border-[#3a2a31] bg-[#140d11] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-[#ffb7c5] transition hover:border-[#ffb7c5]/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-60">Media</button>
                               <button type="button" onClick={handleCommentEditCancel} disabled={isSavingCommentUpdate} className="inline-flex items-center justify-center rounded-full border border-[#3a2a31] bg-[#140d11] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-[#ffb7c5] transition hover:border-[#ffb7c5]/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-60">Cancel</button>
                             </div>
@@ -4764,8 +4777,8 @@ export default function ProfilePage() {
                           </div>
                         </div> : <div className="mt-3 space-y-3">
                           {comment.message ? <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-gray-300">{renderCommentMessageWithMentions(comment.message)}</p> : null}
-                          {comment.mediaURL ? <div className="overflow-hidden rounded-[22px] border border-[#232323] bg-[#050505]">
-                            <CommentMediaFrame src={comment.mediaURL} mediaType={comment.mediaType} alt={`${comment.authorName} comment attachment`} className="block max-h-[360px] w-full object-contain" controls={isCommentVideoMediaType(comment.mediaType)} />
+                          {resolvedCommentMediaURL ? <div className="overflow-hidden rounded-[22px] border border-[#232323] bg-[#050505]">
+                            <CommentMediaFrame src={resolvedCommentMediaURL} mediaType={comment.mediaType} alt={`${comment.authorName} comment attachment`} className="block max-h-[360px] w-full object-contain" controls={isCommentVideoMediaType(comment.mediaType)} />
                           </div> : null}
                         </div>}
                       </div>;
