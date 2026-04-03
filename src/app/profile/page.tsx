@@ -529,11 +529,39 @@ const resolveProfileAvatarUrl = (profile: UserProfile | null | undefined) => {
     return null;
   }
 
-  if (typeof profile.photoURL === "string" && profile.photoURL.trim()) {
-    return profile.photoURL.trim();
+  const profilePhotoUrl = typeof profile.photoURL === "string" ? profile.photoURL.trim() : "";
+  if (profilePhotoUrl) {
+    return profilePhotoUrl;
   }
 
-  return getSupabasePublicObjectUrl(profile.avatarPath);
+  const profileAvatarPath = typeof profile.avatarPath === "string" ? profile.avatarPath.trim() : "";
+  if (profileAvatarPath) {
+    return getSupabasePublicObjectUrl(profileAvatarPath);
+  }
+
+  if (typeof profile.profileId === "number" && profile.profileId > 0) {
+    const cachedProfileSnapshot = readCachedProfileSnapshot<UserProfile>(profile.profileId);
+
+    if (cachedProfileSnapshot) {
+      const cachedPhotoUrl =
+        typeof cachedProfileSnapshot.photoURL === "string"
+          ? cachedProfileSnapshot.photoURL.trim()
+          : "";
+      if (cachedPhotoUrl) {
+        return cachedPhotoUrl;
+      }
+
+      const cachedAvatarPath =
+        typeof cachedProfileSnapshot.avatarPath === "string"
+          ? cachedProfileSnapshot.avatarPath.trim()
+          : "";
+      if (cachedAvatarPath) {
+        return getSupabasePublicObjectUrl(cachedAvatarPath);
+      }
+    }
+  }
+
+  return null;
 };
 const redirectToLocalProfile = (requestedProfileId: number, currentProfileId: number | null) => {
   if (typeof window === "undefined") return false;
