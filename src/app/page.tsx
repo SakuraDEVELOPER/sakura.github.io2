@@ -12,6 +12,7 @@ import { readCachedAuthSnapshot } from "@/lib/auth-snapshot-cache";
 import { writeCachedProfileSnapshot } from "@/lib/profile-cache";
 import { writeCachedProfileComments } from "@/lib/profile-comments-cache";
 import { readCachedSiteOnlineCount, writeCachedSiteOnlineCount } from "@/lib/site-online-cache";
+import { getSupabasePublicObjectUrl, getSupabaseRenderedImageUrl } from "@/lib/supabase";
 
 type ShowcaseSlide = {
   id: string;
@@ -26,6 +27,14 @@ type ShowcaseSlide = {
 
 const repoBasePath = "/sakura.github.io";
 const assetVersion = "20260324-1";
+const homeLogoStoragePath = process.env.NEXT_PUBLIC_HOME_LOGO_PATH?.trim() || "";
+const homeLogoSrc =
+  getSupabaseRenderedImageUrl(homeLogoStoragePath, {
+    width: 160,
+    height: 160,
+    quality: 92,
+    resize: "contain",
+  }) || getSupabasePublicObjectUrl(homeLogoStoragePath);
 
 function withRepoBasePath(path: string, bustCache = false) {
   return `${repoBasePath}${path}${bustCache ? `?v=${assetVersion}` : ""}`;
@@ -1918,12 +1927,25 @@ export default function Home() {
         <nav className="grid grid-cols-1 gap-5 border-b border-[#1a1a1a] px-8 py-6 md:grid-cols-[1fr_auto_1fr] md:items-center">
           <div className="flex flex-wrap items-center gap-3 md:justify-self-start">
             <Link href="/" className="flex items-center gap-3 transition-opacity hover:opacity-90">
-            <span className="text-2xl text-[#ffb7c5] drop-shadow-[0_0_10px_rgba(255,183,197,0.5)]">
-              🌸
-            </span>
-            <h1 className="text-xl font-black tracking-tighter uppercase text-white">
-              Sa<span className="text-[#ffb7c5]">kura</span>
-            </h1>
+              {homeLogoSrc ? (
+                <span className="inline-flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-[#ffb7c5]/35 bg-[#130f12] shadow-[0_0_20px_rgba(255,183,197,0.18)]">
+                  <img
+                    src={homeLogoSrc}
+                    alt="Sakura logo"
+                    decoding="async"
+                    loading="eager"
+                    fetchPriority="high"
+                    className="h-full w-full object-contain"
+                  />
+                </span>
+              ) : (
+                <span className="text-2xl text-[#ffb7c5] drop-shadow-[0_0_10px_rgba(255,183,197,0.5)]">
+                  🌸
+                </span>
+              )}
+              <h1 className="text-xl font-black tracking-tighter uppercase text-white">
+                Sa<span className="text-[#ffb7c5]">kura</span>
+              </h1>
             </Link>
           </div>
 
