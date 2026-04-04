@@ -1442,9 +1442,26 @@ export default function ProfilePage() {
       return;
     }
 
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsHeaderProfileSearchOpen(false);
+        setHeaderProfileSearchError(null);
+        setHeaderProfileSearchFeedback(null);
+      }
+    };
+
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeyDown);
+
     window.requestAnimationFrame(() => {
       headerProfileSearchInputRef.current?.focus();
     });
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
   }, [isHeaderProfileSearchOpen]);
 
   useEffect(() => {
@@ -3797,6 +3814,11 @@ export default function ProfilePage() {
       return nextIsOpen;
     });
   };
+  const closeHeaderProfileSearch = () => {
+    setIsHeaderProfileSearchOpen(false);
+    setHeaderProfileSearchError(null);
+    setHeaderProfileSearchFeedback(null);
+  };
 
   const handleHeaderProfileSearchSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -4666,7 +4688,7 @@ export default function ProfilePage() {
               type="button"
               onClick={toggleHeaderProfileSearch}
               aria-expanded={isHeaderProfileSearchOpen}
-              aria-controls="header-profile-search"
+              aria-controls="header-profile-search-modal"
               aria-label="Search profiles"
               title="Search profiles"
               className={`absolute -right-[58px] top-[22px] z-30 hidden h-11 w-11 items-center justify-center rounded-full border border-transparent bg-transparent text-lg shadow-none transition duration-200 lg:inline-flex ${isHeaderProfileSearchOpen ? "border-[#2b1b1e] bg-[#140d11] text-[#ffb7c5]" : "text-[#ffb7c5]/80 hover:border-[#2b1b1e] hover:bg-[#140d11] hover:text-[#ffb7c5] hover:shadow-[0_0_18px_rgba(255,183,197,0.14)]"}`}
@@ -4677,69 +4699,102 @@ export default function ProfilePage() {
             </button>
 
             {isHeaderProfileSearchOpen ? (
-              <div id="header-profile-search" className="mt-3 rounded-[24px] border border-[#24171b] bg-[radial-gradient(circle_at_top_left,rgba(255,183,197,0.1),transparent_62%),#090909] px-4 py-4">
-                <form onSubmit={handleHeaderProfileSearchSubmit} className="flex flex-col gap-2 sm:flex-row sm:items-end">
-                  <label className="min-w-0 flex-1">
-                    <span className="mb-2 block font-mono text-[10px] uppercase tracking-[0.28em] text-[#b78a95]">Find Account</span>
-                    <input
-                      ref={headerProfileSearchInputRef}
-                      type="text"
-                      value={headerProfileSearchQuery}
-                      onChange={(event) => {
-                        const nextQuery = event.target.value;
-                        setHeaderProfileSearchQuery(nextQuery);
-                        setHeaderProfileSearchError(null);
-                        setHeaderProfileSearchFeedback(null);
-
-                        if (!nextQuery.trim()) {
-                          setHeaderProfileSearchResults([]);
-                        }
-                      }}
-                      className="w-full rounded-2xl border border-[#232323] bg-[#090909] px-4 py-2.5 text-sm text-white outline-none transition placeholder:text-gray-600 focus:border-[#ffb7c5]/55"
-                      placeholder="UID, login, or username"
-                    />
-                  </label>
-                  <button type="submit" disabled={isHeaderProfileSearchLoading} className="inline-flex h-[42px] shrink-0 items-center justify-center rounded-full border border-[#ffb7c5]/30 bg-[#ffb7c5] px-5 text-[11px] font-bold uppercase tracking-[0.16em] text-black transition hover:bg-[#ffc8d3] disabled:cursor-not-allowed disabled:opacity-60">
-                    {isHeaderProfileSearchLoading ? "..." : "Search"}
-                  </button>
-                </form>
-                {headerProfileSearchError ? <p className="mt-3 text-xs leading-relaxed text-[#ff9aa9]">{headerProfileSearchError}</p> : null}
-                {!headerProfileSearchError && headerProfileSearchFeedback ? <p className="mt-3 text-xs leading-relaxed text-gray-500">{headerProfileSearchFeedback}</p> : null}
-                {headerProfileSearchResults.length ? (
-                  <div className="mt-3 space-y-2">
-                    {headerProfileSearchResults.map((candidateProfile, index) => {
-                      const candidateProfileId =
-                        typeof candidateProfile.profileId === "number" ? candidateProfile.profileId : null;
-                      const isNavigable = typeof candidateProfileId === "number";
-                      const candidateKey = profileSearchIdentityKey(candidateProfile) || `candidate-${index}`;
-                      const candidateBody = <>
-                        <span className="min-w-0">
-                          <span className="block truncate text-sm font-semibold text-white">{profileNameOf(candidateProfile)}</span>
-                          <span className="block truncate text-xs text-gray-500">{candidateProfile.login ? `@${candidateProfile.login}` : "No login"}</span>
-                        </span>
-                        <span className="inline-flex shrink-0 items-center gap-1.5 text-[10px] text-[#b78a95]">
-                          <span aria-hidden="true" className="inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-[#ff9fbd] shadow-[0_0_10px_rgba(255,159,189,0.7)]" />
-                          <span className="whitespace-nowrap">{isNavigable ? `UID: ${candidateProfileId}` : "UID unavailable"}</span>
-                        </span>
-                      </>;
-
-                      return isNavigable ? (
-                        <a
-                          key={candidateKey}
-                          href={profilePath(candidateProfileId)}
-                          onClick={() => setIsHeaderProfileSearchOpen(false)}
-                          className="flex items-center justify-between gap-3 rounded-2xl border border-[#222] bg-[#0b0b0b] px-3 py-2.5 transition hover:border-[#ffb7c5]/35"
-                        >
-                          {candidateBody}
-                        </a>
-                      ) : (
-                        <div key={candidateKey} className="flex items-center justify-between gap-3 rounded-2xl border border-[#1e1e1e] bg-[#0b0b0b]/70 px-3 py-2.5 opacity-80">
-                          {candidateBody}
-                        </div>
-                      );
-                    })}
+              <div
+                className="fixed inset-0 z-[90] flex items-center justify-center bg-black/75 px-4 py-6 backdrop-blur-sm"
+                onClick={closeHeaderProfileSearch}
+              >
+                <div
+                  id="header-profile-search-modal"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label="Profile search"
+                  onClick={(event) => event.stopPropagation()}
+                  className="w-full max-w-3xl rounded-[28px] border border-[#24171b] bg-[radial-gradient(circle_at_top_left,rgba(255,183,197,0.14),transparent_62%),#090909] p-5 shadow-[0_0_80px_rgba(0,0,0,0.55)] sm:p-6"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-[#b78a95]">Find Account</p>
+                    <button
+                      type="button"
+                      onClick={closeHeaderProfileSearch}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#2d1f24] bg-[#120d10] text-xs font-bold uppercase tracking-[0.16em] text-[#ffb7c5] transition hover:border-[#ffb7c5]/45 hover:text-white"
+                    >
+                      X
+                    </button>
                   </div>
-                ) : null}
+
+                  <form onSubmit={handleHeaderProfileSearchSubmit} className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <label className="min-w-0 flex-1">
+                      <span className="sr-only">Search profiles</span>
+                      <input
+                        ref={headerProfileSearchInputRef}
+                        type="text"
+                        value={headerProfileSearchQuery}
+                        onChange={(event) => {
+                          const nextQuery = event.target.value;
+                          setHeaderProfileSearchQuery(nextQuery);
+                          setHeaderProfileSearchError(null);
+                          setHeaderProfileSearchFeedback(null);
+
+                          if (!nextQuery.trim()) {
+                            setHeaderProfileSearchResults([]);
+                          }
+                        }}
+                        className="w-full rounded-2xl border border-[#232323] bg-[#090909] px-4 py-3 text-sm text-white outline-none transition placeholder:text-gray-600 focus:border-[#ffb7c5]/55"
+                        placeholder="UID, login, or username"
+                      />
+                    </label>
+                    <button
+                      type="submit"
+                      disabled={isHeaderProfileSearchLoading}
+                      className="inline-flex h-[46px] shrink-0 items-center justify-center rounded-full border border-[#ffb7c5]/30 bg-[#ffb7c5] px-6 text-[11px] font-bold uppercase tracking-[0.16em] text-black transition hover:bg-[#ffc8d3] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isHeaderProfileSearchLoading ? "..." : "Search"}
+                    </button>
+                  </form>
+
+                  {headerProfileSearchError ? (
+                    <p className="mt-3 text-xs leading-relaxed text-[#ff9aa9]">{headerProfileSearchError}</p>
+                  ) : null}
+                  {!headerProfileSearchError && headerProfileSearchFeedback ? (
+                    <p className="mt-3 text-xs leading-relaxed text-gray-500">{headerProfileSearchFeedback}</p>
+                  ) : null}
+
+                  {headerProfileSearchResults.length ? (
+                    <div className="mt-4 max-h-[46vh] space-y-2 overflow-y-auto pr-1">
+                      {headerProfileSearchResults.map((candidateProfile, index) => {
+                        const candidateProfileId =
+                          typeof candidateProfile.profileId === "number" ? candidateProfile.profileId : null;
+                        const isNavigable = typeof candidateProfileId === "number";
+                        const candidateKey = profileSearchIdentityKey(candidateProfile) || `candidate-${index}`;
+                        const candidateBody = <>
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm font-semibold text-white">{profileNameOf(candidateProfile)}</span>
+                            <span className="block truncate text-xs text-gray-500">{candidateProfile.login ? `@${candidateProfile.login}` : "No login"}</span>
+                          </span>
+                          <span className="inline-flex shrink-0 items-center gap-1.5 text-[10px] text-[#b78a95]">
+                            <span aria-hidden="true" className="inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-[#ff9fbd] shadow-[0_0_10px_rgba(255,159,189,0.7)]" />
+                            <span className="whitespace-nowrap">{isNavigable ? `UID: ${candidateProfileId}` : "UID unavailable"}</span>
+                          </span>
+                        </>;
+
+                        return isNavigable ? (
+                          <a
+                            key={candidateKey}
+                            href={profilePath(candidateProfileId)}
+                            onClick={closeHeaderProfileSearch}
+                            className="flex items-center justify-between gap-3 rounded-2xl border border-[#222] bg-[#0b0b0b] px-3 py-2.5 transition hover:border-[#ffb7c5]/35"
+                          >
+                            {candidateBody}
+                          </a>
+                        ) : (
+                          <div key={candidateKey} className="flex items-center justify-between gap-3 rounded-2xl border border-[#1e1e1e] bg-[#0b0b0b]/70 px-3 py-2.5 opacity-80">
+                            {candidateBody}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
               </div>
             ) : null}
 
