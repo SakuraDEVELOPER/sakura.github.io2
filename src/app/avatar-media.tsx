@@ -190,7 +190,7 @@ export function AvatarMedia({
   }, [src]);
 
   useEffect(() => {
-    if (!hasLoadError || retryAttempt >= 2) {
+    if (!hasLoadError || retryAttempt >= 1) {
       return;
     }
 
@@ -199,7 +199,7 @@ export function AvatarMedia({
       setIsLoaded(false);
       setRetryAttempt((currentAttempt) => currentAttempt + 1);
       setRenderKey((currentKey) => currentKey + 1);
-    }, 1200);
+    }, 280);
 
     return () => {
       window.clearTimeout(retryTimeoutId);

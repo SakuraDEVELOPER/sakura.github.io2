@@ -307,7 +307,7 @@ export function SiteOnlineBadge({
 
             {!isLoading && !loadError && users.length ? (
               <div className="flex flex-col gap-2">
-                {users.map((user) => {
+                {users.map((user, userIndex) => {
                   const primaryLabel = buildPrimaryLabel(user);
                   const secondaryLabel = buildSecondaryLabel(user);
                   const accentRole = normalizeRoleName(user.accentRole);
@@ -317,7 +317,7 @@ export function SiteOnlineBadge({
                         <AvatarMedia
                           src={user.photoURL}
                           alt={primaryLabel}
-                          loading="lazy"
+                          loading={userIndex < 5 ? "eager" : "lazy"}
                           decoding="async"
                           className="h-11 w-11 shrink-0 rounded-2xl border border-[#2a2022] object-cover shadow-[0_0_18px_rgba(255,183,197,0.08)]"
                         />

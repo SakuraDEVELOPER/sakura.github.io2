@@ -1718,10 +1718,16 @@ export default function ProfilePage() {
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined" || !authReady || !authStateSettled || authError) return;
+    if (typeof window === "undefined" || !authReady || authError) return;
     const runtime = getWindowState();
     const requestedId = requestedProfileId;
     const visibleCurrentUser = currentUser && !currentUser.isAnonymous ? currentUser : null;
+    const canResolveProfile = requestedId !== null || authStateSettled;
+
+    if (!canResolveProfile) {
+      return;
+    }
+
     if (isEmailVerificationLockedForProfile(visibleCurrentUser)) {
       setProfile(null);
       setProfileError(null);
@@ -1884,7 +1890,7 @@ export default function ProfilePage() {
   useEffect(() => {
     const activeProfileId = profile?.profileId;
 
-    if (!authReady || !authStateSettled || authError || typeof activeProfileId !== "number") {
+    if (!authReady || authError || typeof activeProfileId !== "number") {
       setPreviousProfileId(undefined);
       setNextProfileId(undefined);
       return;
@@ -1940,10 +1946,10 @@ export default function ProfilePage() {
     return () => {
       isCancelled = true;
     };
-  }, [authReady, authStateSettled, authError, profile?.profileId]);
+  }, [authReady, authError, profile?.profileId]);
 
   useEffect(() => {
-    if (!authReady || !authStateSettled || authError) {
+    if (!authReady || authError) {
       return;
     }
 
@@ -2045,12 +2051,7 @@ export default function ProfilePage() {
     return () => {
       isCancelled = true;
     };
-  }, [
-    authReady,
-    authStateSettled,
-    authError,
-    profile?.profileId,
-  ]);
+  }, [authReady, authError, profile?.profileId]);
 
   useEffect(() => {
     if (!authReady || !authStateSettled || authError || !comments.length) {
@@ -2406,7 +2407,7 @@ export default function ProfilePage() {
 
     const timeoutId = window.setTimeout(() => {
       setShowPendingState(true);
-    }, 700);
+    }, 180);
 
     return () => {
       window.clearTimeout(timeoutId);
@@ -5373,7 +5374,7 @@ export default function ProfilePage() {
               <div className="border-b border-[#1b1b1b] bg-[radial-gradient(circle_at_top,rgba(255,183,197,0.16),transparent_55%)] px-8 py-8">
                 <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
                   <div className="flex shrink-0 flex-col items-center gap-3">
-                  {hasActiveProfileAvatar ? <AvatarMedia src={activeProfileAvatarUrl ?? ""} alt={primaryName} decoding="async" className="h-[104px] w-[104px] rounded-[30px] border border-[#2c2023] object-cover shadow-[0_0_30px_rgba(255,183,197,0.14)]" /> : <div className="flex h-[104px] w-[104px] items-center justify-center rounded-[30px] border border-[#2c2023] bg-[#1a1012] text-2xl font-black uppercase text-[#ffb7c5] shadow-[0_0_30px_rgba(255,183,197,0.14)]">{initials}</div>}
+                  {hasActiveProfileAvatar ? <AvatarMedia src={activeProfileAvatarUrl ?? ""} alt={primaryName} loading="eager" decoding="async" className="h-[104px] w-[104px] rounded-[30px] border border-[#2c2023] object-cover shadow-[0_0_30px_rgba(255,183,197,0.14)]" /> : <div className="flex h-[104px] w-[104px] items-center justify-center rounded-[30px] border border-[#2c2023] bg-[#1a1012] text-2xl font-black uppercase text-[#ffb7c5] shadow-[0_0_30px_rgba(255,183,197,0.14)]">{initials}</div>}
                   <span style={{ minWidth: 104, height: 30 }} className={`inline-flex shrink-0 items-center justify-center rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] ${isActiveProfileOnline ? "border-[#1f3b2f] bg-[#0d1713] text-[#8ce5b2]" : "border-[#312228] bg-[#140d11] text-[#ffb7c5]"}`}>{isActiveProfileOnline ? t("Online", "Онлайн") : t("Offline", "Оффлайн")}</span>
                   </div>
                   <div className="flex min-w-0 flex-1 flex-col sm:min-h-[146px]">
@@ -5547,7 +5548,7 @@ export default function ProfilePage() {
                   {!isCommentsLoading && commentsError ? <p className="mt-4 text-sm leading-relaxed text-[#ff9aa9]">{commentsError}</p> : null}
                   {!isCommentsLoading && !commentsError && !comments.length ? <p className="mt-4 text-sm text-gray-500">{t("No comments yet.", "Пока нет комментариев.")}</p> : null}
                   {!isCommentsLoading && !commentsError && comments.length ? <div className="mt-4 flex flex-col gap-3">
-                    {comments.map((comment) => {
+                    {comments.map((comment, commentIndex) => {
                       const isDeletingComment = deletingCommentId === comment.id;
                       const isConfirmingCommentDelete = confirmingCommentDeleteId === comment.id;
                       const isEditingComment = editingCommentId === comment.id;
@@ -5588,7 +5589,7 @@ export default function ProfilePage() {
                       return <div key={comment.id} className="rounded-[24px] border border-[#1d1d1d] bg-[#090909] px-4 py-4">
                         <div className="flex items-start justify-between gap-3">
                           <div className="group/comment-profile relative flex min-w-0 items-start gap-3">
-                            {resolvedCommentAuthorPhotoURL ? <AvatarMedia src={resolvedCommentAuthorPhotoURL} alt={comment.authorName} loading="lazy" decoding="async" className="h-11 w-11 shrink-0 rounded-2xl border border-[#2a2022] object-cover shadow-[0_0_18px_rgba(255,183,197,0.1)]" /> : <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[#2a2022] bg-[#1a1012] text-[11px] font-black uppercase text-[#ffb7c5] shadow-[0_0_18px_rgba(255,183,197,0.08)]">{commentInitials}</div>}
+                            {resolvedCommentAuthorPhotoURL ? <AvatarMedia src={resolvedCommentAuthorPhotoURL} alt={comment.authorName} loading={commentIndex < 4 ? "eager" : "lazy"} decoding="async" className="h-11 w-11 shrink-0 rounded-2xl border border-[#2a2022] object-cover shadow-[0_0_18px_rgba(255,183,197,0.1)]" /> : <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[#2a2022] bg-[#1a1012] text-[11px] font-black uppercase text-[#ffb7c5] shadow-[0_0_18px_rgba(255,183,197,0.08)]">{commentInitials}</div>}
                             <div className="min-w-0">
                               <div className="flex min-w-0 items-center gap-2">
                                 {comment.authorProfileId ? <a href={profilePath(comment.authorProfileId)} style={commentAuthorStyle} className="min-w-0 truncate text-sm font-semibold transition hover:text-white">{comment.authorName}</a> : <p style={commentAuthorStyle} className="min-w-0 truncate text-sm font-semibold">{comment.authorName}</p>}
