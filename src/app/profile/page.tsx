@@ -5721,18 +5721,19 @@ export default function ProfilePage() {
               </button>
             </div>
           ) : null}
-          <div className="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-3">
+          <div className="fixed bottom-4 right-[104px] z-[121] flex flex-col items-end gap-2">
             {canOpenAdminPanel ? (
               <button
                 type="button"
                 onClick={() => setIsAdminPanelOpen(true)}
-                className={`inline-flex items-center justify-center rounded-full border px-5 py-3 text-[11px] font-bold uppercase tracking-[0.22em] shadow-[0_0_30px_rgba(255,183,197,0.14)] transition hover:text-white ${
+                aria-label="Open admin panel"
+                className={`inline-flex h-10 w-10 items-center justify-center rounded-full border text-base shadow-[0_0_24px_rgba(255,183,197,0.14)] transition hover:text-white ${
                   isTargetBanned
                     ? "border-[#ff5a54]/50 bg-[#19090b] text-[#ffb3ad] hover:border-[#ff5a54]"
                     : "border-[#ffb7c5]/35 bg-[#140d11] text-[#ffb7c5] hover:border-[#ffb7c5]/60"
                 }`}
               >
-                Admin Panel
+                🌸
               </button>
             ) : null}
           </div>

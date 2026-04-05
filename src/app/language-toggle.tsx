@@ -1,17 +1,9 @@
 "use client";
 
-import { usePathname } from "next/navigation";
 import { setPreferredUiLocale, useUiLocale } from "@/lib/ui-locale";
 
-const isProfilePath = (pathname: string) => /\/profile(?:\/|$)/.test(pathname);
-
 export default function LanguageToggle() {
-  const pathname = usePathname();
   const locale = useUiLocale();
-
-  if (!pathname || isProfilePath(pathname)) {
-    return null;
-  }
 
   return (
     <div className="fixed right-4 bottom-4 z-[120]">
