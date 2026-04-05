@@ -1767,7 +1767,14 @@ export default function ProfilePage() {
       return;
     }
     if (!runtime.sakuraFirebaseAuth) return;
-    setIsProfileLoading(true);
+    const cachedRequestedProfile = readCachedProfileSnapshot<UserProfile>(requestedId);
+
+    if (cachedRequestedProfile) {
+      setProfile(cachedRequestedProfile);
+      setProfileError(null);
+    }
+
+    setIsProfileLoading(!cachedRequestedProfile);
     setProfileError(null);
     runtime.sakuraFirebaseAuth
       .getProfileById(requestedId)
@@ -1915,6 +1922,16 @@ export default function ProfilePage() {
         scanIndex < PROFILE_NAV_SCAN_LIMIT && candidateProfileId > 0;
         scanIndex += 1, candidateProfileId += step
       ) {
+        const cachedCandidateProfile =
+          readCachedProfileSnapshot<UserProfile>(candidateProfileId);
+
+        if (
+          cachedCandidateProfile &&
+          typeof cachedCandidateProfile.profileId === "number"
+        ) {
+          return cachedCandidateProfile.profileId;
+        }
+
         try {
           const candidateProfile = await bridge.getProfileById(candidateProfileId);
 
@@ -2017,6 +2034,18 @@ export default function ProfilePage() {
         resolvedProfileIds.length < count;
         scanIndex += 1, candidateProfileId += step
       ) {
+        const cachedCandidateProfile =
+          readCachedProfileSnapshot<UserProfile>(candidateProfileId);
+
+        if (
+          cachedCandidateProfile &&
+          typeof cachedCandidateProfile.profileId === "number" &&
+          !resolvedProfileIds.includes(cachedCandidateProfile.profileId)
+        ) {
+          resolvedProfileIds.push(cachedCandidateProfile.profileId);
+          continue;
+        }
+
         try {
           const candidateProfile = await bridge.getProfileById(candidateProfileId);
 
@@ -2346,10 +2375,16 @@ export default function ProfilePage() {
   const isTargetVerificationLocked = targetVerificationStatus === "locked";
   const isTargetVerified = targetVerificationStatus === "verified";
   const isAdminSelfTarget = Boolean(canOpenAdminPanel && isOwner);
+  const shouldRequireSettledAuthForView = requestedProfileId === null;
   const shouldShowPendingState =
     !authError &&
     !activeProfile &&
-    (!authReady || !authStateSettled || isProfileLoading || (requestedProfileId !== null && !profileError));
+    (
+      !authReady ||
+      (shouldRequireSettledAuthForView && !authStateSettled) ||
+      isProfileLoading ||
+      (requestedProfileId !== null && !profileError)
+    );
 
   useEffect(() => {
     setIsProfileControlsOpen(false);
