@@ -39,6 +39,7 @@ type UserProfile = {
   avatarPath?: string | null;
   avatarType?: string | null;
   avatarSize?: number | null;
+  themeSongKey?: string | null;
   roles: string[];
   isBanned?: boolean;
   bannedAt?: string | null;
@@ -117,6 +118,7 @@ type Bridge = {
   updatePassword: (currentPassword: string, nextPassword: string) => Promise<UserProfile | null>;
   adminUpdateProfileDisplayName: (profileId: number, displayName: string) => Promise<UserProfile | null>;
   adminUpdateProfileLogin: (profileId: number, login: string) => Promise<UserProfile | null>;
+  adminUpdateProfileThemeSong: (profileId: number, themeSongKey: string) => Promise<UserProfile | null>;
   adminSetProfileBan: (profileId: number, isBanned: boolean) => Promise<UserProfile | null>;
   adminSetProfileEmailVerification: (profileId: number, isVerified: boolean) => Promise<UserProfile | null>;
   updateProfileRoles: (profileId: number, roles: string[]) => Promise<UserProfile | null>;
@@ -155,7 +157,7 @@ type RuntimeWindow = Window & {
   sakuraFirebaseRuntimeVersion?: string;
 };
 
-const FIREBASE_AUTH_RUNTIME_VERSION = "2026-04-03-runtime-v2";
+const FIREBASE_AUTH_RUNTIME_VERSION = "2026-04-05-runtime-v3";
 const AUTH_READY_EVENT = "sakura-auth-ready";
 const AUTH_ERROR_EVENT = "sakura-auth-error";
 const AUTH_STATE_SETTLED_EVENT = "sakura-auth-state-settled";
@@ -165,24 +167,37 @@ const FLOATING_UI_VISIBILITY_EVENT = "sakura-floating-ui-visibility";
 const PROFILE_PATH_STORAGE_KEY = "sakura-profile-path";
 const CURRENT_PROFILE_ID_STORAGE_KEY = "sakura-current-profile-id";
 const PROFILE_BUILD_MARKER = "role-colors-v61";
-const PROFILE_THEME_TITLE_BY_PROFILE_ID = new Map<number, string>([
-  [1, "Pixies вЂ” Where Is My Mind"],
-  [2, "Face вЂ” Forever Young"],
-  [3, "Cyberpunk"],
-  [4, "Pixies вЂ” Where Is My Mind"],
-  [5, "Pixies вЂ” Where Is My Mind"],
+const repoBasePath = "/sakura.github.io";
+const PROFILE_THEME_OPTIONS = [
+  {
+    key: "where-is-my-mind",
+    title: "Pixies - Where Is My Mind",
+    src: `${repoBasePath}/music/where-is-my-mind.mp3`,
+  },
+  {
+    key: "forever-young",
+    title: "Face - Forever Young",
+    src: `${repoBasePath}/music/Face-forever-young.mp3`,
+  },
+  {
+    key: "cyberpunk",
+    title: "Cyberpunk",
+    src: `${repoBasePath}/music/cyberpunk.mp3`,
+  },
+] as const;
+const PROFILE_THEME_BY_KEY = new Map<string, (typeof PROFILE_THEME_OPTIONS)[number]>(
+  PROFILE_THEME_OPTIONS.map((track) => [track.key, track])
+);
+const PROFILE_THEME_DEFAULT_KEY_BY_PROFILE_ID = new Map<number, string>([
+  [1, "where-is-my-mind"],
+  [2, "forever-young"],
+  [3, "cyberpunk"],
+  [4, "where-is-my-mind"],
+  [5, "where-is-my-mind"],
 ]);
 const COMMENT_MENTION_PATTERN = /@([A-Za-z\u0400-\u04FF0-9._-]{3,24})/g;
 const COMMENT_MENTION_DRAFT_PATTERN = /(^|[\s([{"'`])@([A-Za-z\u0400-\u04FF0-9._-]{2,24})$/;
 const COMMENT_MENTION_TOKEN_CHARACTER_PATTERN = /[A-Za-z\u0400-\u04FF0-9._-]/;
-const repoBasePath = "/sakura.github.io";
-const PROFILE_THEME_SONG_BY_PROFILE_ID = new Map<number, string>([
-  [1, `${repoBasePath}/music/where-is-my-mind.mp3`],
-  [2, `${repoBasePath}/music/Face-forever-young.mp3`],
-  [3, `${repoBasePath}/music/cyberpunk.mp3`],
-  [4, `${repoBasePath}/music/where-is-my-mind.mp3`],
-  [5, `${repoBasePath}/music/where-is-my-mind.mp3`],
-]);
 const COMMENT_MEDIA_FILE_ACCEPT = ".png,.jpg,.jpeg,.webp,.gif,.mp4,.webm";
 const PRESENCE_ACTIVE_WINDOW_MS = 90 * 1000;
 const SITE_ONLINE_COUNT_REFRESH_INTERVAL_MS = 20 * 1000;
@@ -223,6 +238,23 @@ const restoreProfilePathScript = `
 `;
 
 const getWindowState = () => window as RuntimeWindow;
+const normalizeProfileThemeSongKey = (value: unknown): string | null => {
+  const normalizedKey =
+    typeof value === "string"
+      ? value
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9-]+/g, "-")
+          .replace(/-+/g, "-")
+          .replace(/^-+|-+$/g, "")
+      : "";
+
+  if (!normalizedKey) {
+    return null;
+  }
+
+  return PROFILE_THEME_BY_KEY.has(normalizedKey) ? normalizedKey : null;
+};
 const hasCurrentFirebaseAuthRuntime = (runtime: RuntimeWindow) =>
   Boolean(runtime.sakuraFirebaseAuth) &&
   runtime.sakuraFirebaseRuntimeVersion === FIREBASE_AUTH_RUNTIME_VERSION &&
@@ -1430,6 +1462,10 @@ export default function ProfilePage() {
   const [isAdminPasswordResetSending, setIsAdminPasswordResetSending] = useState(false);
   const [adminPasswordResetError, setAdminPasswordResetError] = useState<string | null>(null);
   const [adminPasswordResetSuccess, setAdminPasswordResetSuccess] = useState<string | null>(null);
+  const [adminThemeSongInput, setAdminThemeSongInput] = useState("");
+  const [isAdminThemeSongSaving, setIsAdminThemeSongSaving] = useState(false);
+  const [adminThemeSongError, setAdminThemeSongError] = useState<string | null>(null);
+  const [adminThemeSongSuccess, setAdminThemeSongSuccess] = useState<string | null>(null);
   const [isAccountDeleting, setIsAccountDeleting] = useState(false);
   const [deleteAccountError, setDeleteAccountError] = useState<string | null>(null);
   const [comments, setComments] = useState<ProfileComment[]>(bootstrap.comments);
@@ -2094,21 +2130,21 @@ export default function ProfilePage() {
       : activeProfile?.presence ?? null;
   const profileThemeProfileId =
     typeof activeProfile?.profileId === "number" ? activeProfile.profileId : null;
+  const profileThemeStoredSongKey = normalizeProfileThemeSongKey(activeProfile?.themeSongKey);
+  const profileThemeDefaultSongKey =
+    typeof profileThemeProfileId === "number"
+      ? PROFILE_THEME_DEFAULT_KEY_BY_PROFILE_ID.get(profileThemeProfileId) ?? null
+      : null;
+  const profileThemeResolvedSongKey = profileThemeStoredSongKey ?? profileThemeDefaultSongKey;
+  const profileThemeSelection = profileThemeResolvedSongKey
+    ? PROFILE_THEME_BY_KEY.get(profileThemeResolvedSongKey) ?? null
+    : null;
   const profileThemeSongSrc =
-    typeof profileThemeProfileId === "number"
-      ? PROFILE_THEME_SONG_BY_PROFILE_ID.get(profileThemeProfileId) ?? null
-      : null;
-  const profileThemeTitle =
-    typeof profileThemeProfileId === "number"
-      ? profileThemeProfileId === 2
-        ? "Face forever young"
-        : profileThemeProfileId === 3
-          ? "Cyberpunk"
-          : "Pixies - Where Is My Mind"
-      : null;
+    typeof profileThemeProfileId === "number" ? profileThemeSelection?.src ?? null : null;
+  const profileThemeTitle = profileThemeSelection?.title ?? null;
   const profileThemeSongKey =
-    profileThemeProfileId && profileThemeSongSrc
-      ? `${profileThemeProfileId}:${profileThemeSongSrc}`
+    profileThemeProfileId && profileThemeResolvedSongKey
+      ? `${profileThemeProfileId}:${profileThemeResolvedSongKey}`
       : null;
   const shouldPlayProfileThemeSong = Boolean(profileThemeSongSrc);
 
@@ -3246,6 +3282,9 @@ export default function ProfilePage() {
       setAdminVerificationSuccess(null);
       setAdminPasswordResetError(null);
       setAdminPasswordResetSuccess(null);
+      setAdminThemeSongInput("");
+      setAdminThemeSongError(null);
+      setAdminThemeSongSuccess(null);
       setDeleteAccountError(null);
       setComments([]);
       setCommentAuthorProfiles({});
@@ -3289,6 +3328,14 @@ export default function ProfilePage() {
     setAdminVerificationSuccess(null);
     setAdminPasswordResetError(null);
     setAdminPasswordResetSuccess(null);
+    setAdminThemeSongInput(
+      normalizeProfileThemeSongKey(activeProfile.themeSongKey) ??
+        (typeof activeProfile.profileId === "number"
+          ? PROFILE_THEME_DEFAULT_KEY_BY_PROFILE_ID.get(activeProfile.profileId) ?? ""
+          : "")
+    );
+    setAdminThemeSongError(null);
+    setAdminThemeSongSuccess(null);
     setDeleteAccountError(null);
     setBanError(null);
     setBanSuccess(null);
@@ -4474,6 +4521,55 @@ export default function ProfilePage() {
       );
     } finally {
       setIsAdminPasswordResetSending(false);
+    }
+  };
+  const handleAdminThemeSongSave = async () => {
+    const bridge = getWindowState().sakuraFirebaseAuth;
+
+    if (!bridge || !canOpenAdminPanel || !activeProfile?.profileId) {
+      return;
+    }
+
+    if (typeof bridge.adminUpdateProfileThemeSong !== "function") {
+      setAdminThemeSongError("Profile music update is unavailable in the current runtime.");
+      setAdminThemeSongSuccess(null);
+      return;
+    }
+
+    const normalizedThemeSongKey = normalizeProfileThemeSongKey(adminThemeSongInput);
+
+    if (adminThemeSongInput.trim() && !normalizedThemeSongKey) {
+      setAdminThemeSongError("Select a valid profile track.");
+      setAdminThemeSongSuccess(null);
+      return;
+    }
+
+    setAdminThemeSongError(null);
+    setAdminThemeSongSuccess(null);
+    setIsAdminThemeSongSaving(true);
+
+    try {
+      const snapshot = await bridge.adminUpdateProfileThemeSong(
+        activeProfile.profileId,
+        normalizedThemeSongKey ?? ""
+      );
+
+      applyUpdatedProfileSnapshot(snapshot);
+      setAdminThemeSongInput(
+        normalizeProfileThemeSongKey(snapshot?.themeSongKey) ??
+          (typeof activeProfile.profileId === "number"
+            ? PROFILE_THEME_DEFAULT_KEY_BY_PROFILE_ID.get(activeProfile.profileId) ?? ""
+            : "")
+      );
+      setAdminThemeSongSuccess(
+        normalizedThemeSongKey ? "Profile music updated." : "Profile music reset to default."
+      );
+    } catch (error) {
+      setAdminThemeSongError(
+        getProfileActionErrorMessage(error, "Could not update profile music.")
+      );
+    } finally {
+      setIsAdminThemeSongSaving(false);
     }
   };
   const handleDeleteAccount = async () => {
@@ -6106,6 +6202,44 @@ export default function ProfilePage() {
                       </div>
                       {usernameError ? <p className="mt-3 text-xs leading-relaxed text-[#ff9aa9]">{usernameError}</p> : null}
                       {usernameSuccess ? <p className="mt-3 text-xs leading-relaxed text-[#8ce5b2]">{usernameSuccess}</p> : null}
+                    </section>
+
+                    <section className="rounded-[24px] border border-[#1d1d1d] bg-[#0d0d0d] p-5">
+                      <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-gray-500">{t("Profile Music", "Profile Music")}</p>
+                      <label className="mt-4 block">
+                        <span className="mb-2 block text-xs text-gray-500">{t("Theme track", "Theme track")}</span>
+                        <select
+                          value={adminThemeSongInput}
+                          onChange={(event) => {
+                            setAdminThemeSongInput(event.target.value);
+                            setAdminThemeSongError(null);
+                            setAdminThemeSongSuccess(null);
+                          }}
+                          className="w-full rounded-2xl border border-[#232323] bg-[#090909] px-4 py-3 text-sm text-white outline-none transition focus:border-[#ffb7c5]/55"
+                        >
+                          <option value="">{t("Default by profile", "Default by profile")}</option>
+                          {PROFILE_THEME_OPTIONS.map((themeOption) => (
+                            <option key={themeOption.key} value={themeOption.key}>
+                              {themeOption.title}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <div className="mt-4 flex flex-wrap items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={handleAdminThemeSongSave}
+                          disabled={isAdminThemeSongSaving}
+                          className="inline-flex items-center justify-center rounded-full border border-[#ffb7c5]/30 bg-[#ffb7c5] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-black transition hover:bg-[#ffc8d3] disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {isAdminThemeSongSaving ? t("Saving...", "Saving...") : t("Save Music", "Save Music")}
+                        </button>
+                        <span className="text-xs text-gray-500">
+                          {t("Current:", "Current:")} {profileThemeTitle ?? t("None", "None")}
+                        </span>
+                      </div>
+                      {adminThemeSongError ? <p className="mt-3 text-xs leading-relaxed text-[#ff9aa9]">{adminThemeSongError}</p> : null}
+                      {adminThemeSongSuccess ? <p className="mt-3 text-xs leading-relaxed text-[#8ce5b2]">{adminThemeSongSuccess}</p> : null}
                     </section>
 
                     <section className="rounded-[24px] border border-[#1d1d1d] bg-[#0d0d0d] p-5">

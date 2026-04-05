@@ -2152,16 +2152,16 @@ function SetupSteps() {
       num: "02",
       title: t("Initialize", "Запустите"),
       desc: t(
-        "Launch Dota 2, then open the loader as administrator.",
-        "Запустите Dota 2, затем откройте лоадер от имени администратора."
+        "Launch the loader as administrator and it will handle the rest.",
+        "Запустите лоадер от имени администратора, и он откроет всё сам."
       ),
     },
     {
       num: "03",
       title: t("Configure", "Настройте"),
       desc: t(
-        "Press INSERT in-game to open the menu and load your Lua configs.",
-        "Нажмите INSERT в игре, чтобы открыть меню и загрузить Lua-конфиги."
+        "Press INSERT in-game to open the menu and configure the cheat.",
+        "Нажмите INSERT в игре, чтобы открыть меню и настроить чит."
       ),
     },
   ];

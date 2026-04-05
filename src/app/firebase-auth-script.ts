@@ -112,6 +112,11 @@ const firebaseModuleScript = `
   const AUTH_SNAPSHOT_CACHE_STORAGE_KEY = "sakura-auth-snapshot-v1";
   const AVATAR_CONTENT_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "video/mp4", "video/webm"]);
   const LOGIN_PATTERN = /^[A-Za-z\u0400-\u04FF0-9._-]+$/;
+  const PROFILE_THEME_SONG_KEYS = new Set([
+    "where-is-my-mind",
+    "forever-young",
+    "cyberpunk",
+  ]);
   const profileByIdRuntimeCache = new Map();
   const profileByAuthorRuntimeCache = new Map();
   const profilesByPrefixRuntimeCache = new Map();
@@ -135,6 +140,10 @@ const firebaseModuleScript = `
     hasOwn(details, "avatarType") ? details.avatarType ?? null : fallbackAvatarType ?? null;
   const resolveAvatarSize = (details, fallbackAvatarSize = null) =>
     hasOwn(details, "avatarSize") ? details.avatarSize ?? null : fallbackAvatarSize ?? null;
+  const resolveThemeSongKey = (details, fallbackThemeSongKey = null) =>
+    hasOwn(details, "themeSongKey")
+      ? normalizeProfileThemeSongKey(details.themeSongKey)
+      : normalizeProfileThemeSongKey(fallbackThemeSongKey);
   const resolveBannedAt = (details, fallbackBannedAt = null) =>
     hasOwn(details, "bannedAt")
       ? typeof details.bannedAt === "string"
@@ -558,6 +567,23 @@ const firebaseModuleScript = `
     typeof value === "string"
       ? value.trim().replace(/\\s+/g, " ").slice(0, DISPLAY_NAME_MAX_LENGTH)
       : "";
+  const normalizeProfileThemeSongKey = (value) => {
+    const normalizedKey =
+      typeof value === "string"
+        ? value
+            .trim()
+            .toLowerCase()
+            .replace(/[^a-z0-9-]+/g, "-")
+            .replace(/-+/g, "-")
+            .replace(/^-+|-+$/g, "")
+        : "";
+
+    if (!normalizedKey) {
+      return null;
+    }
+
+    return PROFILE_THEME_SONG_KEYS.has(normalizedKey) ? normalizedKey : null;
+  };
 
   const normalizeLogin = (value) => sanitizeLogin(value).toLocaleLowerCase();
 
@@ -1243,6 +1269,7 @@ const firebaseModuleScript = `
     avatarPath: resolveAvatarPath(details, null),
     avatarType: resolveAvatarType(details, null),
     avatarSize: resolveAvatarSize(details, null),
+    themeSongKey: resolveThemeSongKey(details, null),
     providerIds: Array.isArray(details.providerIds) ? details.providerIds : getProviderIds(user),
     roles: normalizeRoles(details.roles),
     isBanned: details.isBanned === true,
@@ -1273,6 +1300,7 @@ const firebaseModuleScript = `
           avatarPath: resolveAvatarPath(details, null),
           avatarType: resolveAvatarType(details, null),
           avatarSize: resolveAvatarSize(details, null),
+          themeSongKey: resolveThemeSongKey(details, null),
           roles: normalizeRoles(details.roles),
           isBanned: details.isBanned === true,
           bannedAt: resolveBannedAt(details),
@@ -1309,6 +1337,7 @@ const firebaseModuleScript = `
     avatarPath: resolveAvatarPath(details, null),
     avatarType: resolveAvatarType(details, null),
     avatarSize: resolveAvatarSize(details, null),
+    themeSongKey: resolveThemeSongKey(details, null),
     roles: normalizeRoles(details.roles),
     isBanned: details.isBanned === true,
     bannedAt: resolveBannedAt(details),
@@ -4040,6 +4069,52 @@ const firebaseModuleScript = `
         loginLower: usernameDetails.loginLower,
       });
     };
+    const adminUpdateProfileThemeSong = async (profileId, nextThemeSongKey) => {
+      const { actorSnapshot } = await ensureRootActorSnapshot();
+
+      if (!Number.isInteger(profileId) || profileId <= 0) {
+        throw createFirebaseError("profile/invalid-id", "Profile id must be a positive number.");
+      }
+
+      const targetDoc = await findUserByProfileId(profileId);
+
+      if (!targetDoc) {
+        return null;
+      }
+
+      ensureActorCanManageTargetProfile(actorSnapshot?.roles ?? [], targetDoc.data()?.roles ?? []);
+
+      const normalizedThemeSongKey = normalizeProfileThemeSongKey(nextThemeSongKey);
+
+      if (typeof nextThemeSongKey === "string" && nextThemeSongKey.trim() && !normalizedThemeSongKey) {
+        throw createFirebaseError("profile/invalid-theme-song", "Select a valid profile track.");
+      }
+
+      try {
+        await setDoc(
+          userRefFor(targetDoc.id),
+          {
+            themeSongKey: normalizedThemeSongKey,
+            updatedAt: new Date().toISOString(),
+          },
+          { merge: true }
+        );
+      } catch (error) {
+        if (!isPermissionDeniedError(error)) {
+          throw error;
+        }
+
+        throw createFirebaseError(
+          "profile/theme-song-persist-failed",
+          "Profile music could not be saved. Check Firestore rules for privileged users."
+        );
+      }
+
+      return refreshStoredUserSnapshot(targetDoc.id, {
+        ...targetDoc.data(),
+        themeSongKey: normalizedThemeSongKey,
+      });
+    };
     const adminUpdateProfileAvatar = async (profileId, file) => {
       const { actorSnapshot } = await ensureRootActorSnapshot();
 
@@ -4587,6 +4662,7 @@ const firebaseModuleScript = `
       updateUsername,
       adminUpdateProfileDisplayName,
       adminUpdateProfileLogin,
+      adminUpdateProfileThemeSong,
       adminSetProfileBan,
       adminSetProfileEmailVerification,
       getProfileById,
