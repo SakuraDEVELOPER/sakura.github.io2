@@ -5387,15 +5387,15 @@ export default function ProfilePage() {
                     shouldShowSubscriptionDetails ? "p-5" : "px-4 py-3"
                   }`}
                 >
-                  <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-center justify-between gap-4">
                     <div>
-                      <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-[#ffb7c5]">{t("Subscription", "Подписка")}</p>
+                      <p className="font-mono text-[10px] uppercase leading-none tracking-[0.4em] text-[#ffb7c5]">{t("Subscription", "Подписка")}</p>
                     </div>
                     <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-                      <span style={{ ...subscriptionBadgeStyle, ...roleBadgeTextStyle }} className="inline-flex shrink-0 rounded-full border px-3 py-1 text-[10px] font-bold">
+                      <span style={{ ...subscriptionBadgeStyle, ...roleBadgeTextStyle }} className="inline-flex h-[24px] shrink-0 items-center rounded-full border px-3 text-[10px] font-bold leading-none">
                         {subscriptionStatusLabel}
                       </span>
-                      {hasTestPeriodRole ? <span style={{ ...subscriptionTestPeriodBadgeStyle, ...roleBadgeTextStyle }} className="inline-flex shrink-0 rounded-full border px-3 py-1 text-[10px] font-bold">
+                      {hasTestPeriodRole ? <span style={{ ...subscriptionTestPeriodBadgeStyle, ...roleBadgeTextStyle }} className="inline-flex h-[24px] shrink-0 items-center rounded-full border px-3 text-[10px] font-bold leading-none">
                         {t("Test Period", "Тестовый период")}
                       </span> : null}
                     </div>
