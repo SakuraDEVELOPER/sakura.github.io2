@@ -13,7 +13,7 @@ type SocialLinkDefinition = {
   icon: ReactNode;
 };
 
-const ICON_BASE_CLASS = "block h-[18px] w-[18px] shrink-0 flex-none fill-current text-current";
+const ICON_BASE_CLASS = "block h-[17px] w-[17px] shrink-0 flex-none fill-current text-current";
 
 function VkIcon() {
   return (
@@ -34,7 +34,7 @@ function DiscordIcon() {
       viewBox="0 0 24 24"
       preserveAspectRatio="xMidYMid meet"
       aria-hidden="true"
-      className={`${ICON_BASE_CLASS} translate-x-[0.3px]`}
+      className={`${ICON_BASE_CLASS} translate-x-[0.2px]`}
     >
       <path d="M20.317 4.3698a19.7913 19.7913 0 0 0-4.8851-1.5152.0741.0741 0 0 0-.0785.0371 13.7139 13.7139 0 0 0-.608 1.2495 18.2669 18.2669 0 0 0-5.487 0 12.6362 12.6362 0 0 0-.6171-1.2495.077.077 0 0 0-.0785-.037 19.7363 19.7363 0 0 0-4.8852 1.5152.0699.0699 0 0 0-.0321.0277C.5334 9.0467-.32 13.5799.099 18.0578a.0824.0824 0 0 0 .0312.0561 19.9 19.9 0 0 0 5.9938 3.0301.078.078 0 0 0 .0842-.0276 13.98 13.98 0 0 0 1.2265-1.9942.0761.0761 0 0 0-.0416-.1057 13.1066 13.1066 0 0 1-1.872-.8923.077.077 0 0 1-.0076-.1277 12.7551 12.7551 0 0 0 .3664-.2977.0743.0743 0 0 1 .0776-.0108c3.9278 1.7933 8.18 1.7933 12.061 0a.0743.0743 0 0 1 .0785.0096c.1176.1044.2408.2044.3664.2987a.0766.0766 0 0 1-.0064.1277 12.2992 12.2992 0 0 1-1.873.8912.0766.0766 0 0 0-.0407.1067c.3604.6878.7717 1.3548 1.2254 1.9932a.076.076 0 0 0 .0842.0286 19.8369 19.8369 0 0 0 6.002-3.0301.077.077 0 0 0 .0312-.055c.5-5.177-.838-9.6749-3.5485-13.66a.061.061 0 0 0-.0312-.0286ZM8.02 15.3312c-1.1836 0-2.1576-1.0857-2.1576-2.419 0-1.3332.9555-2.4189 2.1576-2.4189 1.211 0 2.175 1.0952 2.1576 2.419 0 1.3332-.9555 2.4189-2.1576 2.4189Zm7.9748 0c-1.1837 0-2.1576-1.0857-2.1576-2.419 0-1.3332.9555-2.4189 2.1576-2.4189 1.2109 0 2.1749 1.0952 2.1576 2.419 0 1.3332-.9469 2.4189-2.1576 2.4189Z" />
     </svg>
@@ -104,10 +104,10 @@ export function HeaderSocialLinks({
           Socials:
         </span>
       ) : null}
-      <div className="flex items-center gap-2.5 rounded-[18px] border border-[#3a2329] bg-[#120d10] px-4 py-2.5 shadow-[0_0_24px_rgba(255,183,197,0.08)]">
+      <div className="flex items-center gap-2 rounded-[16px] border border-[#3a2329] bg-[#120d10] px-3 py-1.5 shadow-[0_0_24px_rgba(255,183,197,0.08)]">
         {SOCIAL_LINKS.map((link) => {
           const commonClassName =
-            "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md align-middle leading-none text-[#ffb7c5] transition duration-200";
+            "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md align-middle leading-none text-[#ffb7c5] transition duration-200";
 
           if (!link.href) {
             return (
