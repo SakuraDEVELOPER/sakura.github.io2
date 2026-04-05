@@ -205,6 +205,8 @@ const SITE_ONLINE_COUNT_REFRESH_DEBOUNCE_MS = 280;
 const PROFILE_NAV_SCAN_LIMIT = 300;
 const PROFILE_NAV_PREFETCH_PER_SIDE = 2;
 const PROFILE_THEME_TIMELINE_UPDATE_STEP_SECONDS = 0.24;
+const FUNPAY_SUBSCRIPTION_URL = "https://funpay.com/lots/offer?id=67099133";
+const FUNPAY_ICON_URL = "https://funpay.com/favicon.ico";
 const STALE_RUNTIME_RECOVERY_STORAGE_KEY = "sakura-stale-runtime-recovery-at";
 const STALE_RUNTIME_RECOVERY_COUNT_STORAGE_KEY = "sakura-stale-runtime-recovery-count";
 const STALE_RUNTIME_RECOVERY_COOLDOWN_MS = 5 * 60 * 1000;
@@ -5455,6 +5457,27 @@ export default function ProfilePage() {
                       <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-[#b78a95]">{t("Current Subscription", "Текущая подписка")}</p>
                       <p className="mt-3 text-lg font-bold text-white">{subscriptionSummary.title}</p>
                       <p className="mt-3 text-xs leading-relaxed text-gray-400">{subscriptionSummary.description}</p>
+                      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                        <p className="text-xs text-gray-400">
+                          {t("Payment method", "Способ оплаты")}:{" "}
+                          <span className="font-semibold text-[#ffb7c5]">FunPay</span>
+                        </p>
+                        <a
+                          href={FUNPAY_SUBSCRIPTION_URL}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 rounded-full border border-[#3a2a31] bg-[#140d11] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-[#ffb7c5] transition hover:border-[#ffb7c5]/45 hover:text-white"
+                        >
+                          <img
+                            src={FUNPAY_ICON_URL}
+                            alt="FunPay"
+                            loading="lazy"
+                            decoding="async"
+                            className="h-4 w-4 rounded-sm"
+                          />
+                          <span>{t("Buy on FunPay", "Купить на FunPay")}</span>
+                        </a>
+                      </div>
                     </div>
                   ) : null}
                 </div>
