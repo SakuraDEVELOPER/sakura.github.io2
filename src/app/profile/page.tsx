@@ -2306,6 +2306,7 @@ export default function ProfilePage() {
     subscriptionSummary.status === "active"
       ? t("Active", "РђРєС‚РёРІРЅР°")
       : t("Inactive", "РќРµР°РєС‚РёРІРЅР°");
+  const shouldShowSubscriptionDetails = isOwner;
   const shouldShowVerificationBanner = Boolean(
     isOwner &&
       !activeProfile?.isBanned &&
@@ -5373,7 +5374,11 @@ export default function ProfilePage() {
                 </div>
               </div>
               <div className="px-8 pt-6 pb-7">
-                <div className="rounded-[26px] border border-[#2f161d] bg-[radial-gradient(circle_at_top_left,rgba(255,183,197,0.1),transparent_58%),linear-gradient(180deg,#0c0a0b_0%,#090909_100%)] p-5 shadow-[0_0_26px_rgba(255,143,177,0.08)]">
+                <div
+                  className={`rounded-[26px] border border-[#2f161d] bg-[radial-gradient(circle_at_top_left,rgba(255,183,197,0.1),transparent_58%),linear-gradient(180deg,#0c0a0b_0%,#090909_100%)] shadow-[0_0_26px_rgba(255,143,177,0.08)] ${
+                    shouldShowSubscriptionDetails ? "p-5" : "px-4 py-3"
+                  }`}
+                >
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-[#ffb7c5]">{t("Subscription", "РџРѕРґРїРёСЃРєР°")}</p>
@@ -5387,11 +5392,13 @@ export default function ProfilePage() {
                       </span> : null}
                     </div>
                   </div>
-                  <div className="mt-4 rounded-[22px] border border-[#24171b] bg-[radial-gradient(circle_at_top_left,rgba(255,183,197,0.08),transparent_62%),#090909] p-4">
-                    <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-[#b78a95]">{t("Current Subscription", "РўРµРєСѓС‰Р°СЏ РїРѕРґРїРёСЃРєР°")}</p>
-                    <p className="mt-3 text-lg font-bold text-white">{subscriptionSummary.title}</p>
-                    <p className="mt-3 text-xs leading-relaxed text-gray-400">{subscriptionSummary.description}</p>
-                  </div>
+                  {shouldShowSubscriptionDetails ? (
+                    <div className="mt-4 rounded-[22px] border border-[#24171b] bg-[radial-gradient(circle_at_top_left,rgba(255,183,197,0.08),transparent_62%),#090909] p-4">
+                      <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-[#b78a95]">{t("Current Subscription", "РўРµРєСѓС‰Р°СЏ РїРѕРґРїРёСЃРєР°")}</p>
+                      <p className="mt-3 text-lg font-bold text-white">{subscriptionSummary.title}</p>
+                      <p className="mt-3 text-xs leading-relaxed text-gray-400">{subscriptionSummary.description}</p>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </div>
