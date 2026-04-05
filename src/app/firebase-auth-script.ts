@@ -26,11 +26,13 @@
           reauthenticateWithCredential,
           reload,
           sendEmailVerification,
+          sendPasswordResetEmail,
           signInAnonymously,
           signInWithPopup,
           signInWithRedirect,
           signInWithEmailAndPassword,
           signOut,
+          updatePassword,
           updateProfile
         },
         {
@@ -2660,6 +2662,78 @@
 
       return snapshot;
     };
+    const updatePasswordWithCurrent = async (currentPassword, nextPassword) => {
+      const user = auth.currentUser;
+
+      if (!user || user.isAnonymous) {
+        throw createFirebaseError("auth/no-current-user", "Sign in again to update your password.");
+      }
+
+      await ensureVerifiedSessionAccess(user, "Verify your email before changing the password.");
+
+      const currentPasswordValue = typeof currentPassword === "string" ? currentPassword : "";
+      const nextPasswordValue = typeof nextPassword === "string" ? nextPassword : "";
+      const email = typeof user.email === "string" ? user.email.trim() : "";
+
+      if (!currentPasswordValue) {
+        throw createFirebaseError(
+          "auth/current-password-required",
+          "Enter your current password."
+        );
+      }
+
+      if (!email) {
+        throw createFirebaseError(
+          "auth/missing-email-for-password-reset",
+          "This account does not have a linked email for password recovery."
+        );
+      }
+
+      if (!nextPasswordValue || nextPasswordValue.length < 6) {
+        throw createFirebaseError(
+          "auth/weak-password",
+          "Password must contain at least 6 characters."
+        );
+      }
+
+      try {
+        await reauthenticateWithCredential(
+          user,
+          EmailAuthProvider.credential(email, currentPasswordValue)
+        );
+      } catch (error) {
+        const errorCode = getErrorCode(error);
+
+        if (
+          errorCode === "auth/wrong-password" ||
+          errorCode === "auth/invalid-credential" ||
+          errorCode === "auth/user-mismatch"
+        ) {
+          throw createFirebaseError(
+            "auth/current-password-invalid",
+            "Current password is incorrect."
+          );
+        }
+
+        throw error;
+      }
+
+      await updatePassword(user, nextPasswordValue);
+
+      const snapshot = await resolveUserSnapshot(user);
+      return enforceActiveSessionNotBanned(snapshot);
+    };
+    const sendPasswordReset = async (identifier) => {
+      const normalizedIdentifier = typeof identifier === "string" ? identifier.trim() : "";
+
+      if (!normalizedIdentifier) {
+        throw createFirebaseError("auth/invalid-email", "Enter your email or login.");
+      }
+
+      const email = await resolveEmailForLogin(normalizedIdentifier);
+      await sendPasswordResetEmail(auth, email);
+      return { email };
+    };
     const updateDisplayName = async (nextDisplayName) => {
       const user = auth.currentUser;
 
@@ -4459,6 +4533,8 @@
       },
       completeGoogleAccount,
       loginWithGoogle,
+      sendPasswordReset,
+      updatePassword: updatePasswordWithCurrent,
       updateDisplayName,
       updateUsername,
       adminUpdateProfileDisplayName,

@@ -98,6 +98,8 @@ type AuthUserSnapshot = {
 type FirebaseAuthBridge = {
   __runtimeVersion?: string;
   login: (identifier: string, password: string) => Promise<AuthUserSnapshot | null>;
+  sendPasswordReset: (identifier: string) => Promise<{ email: string }>;
+  updatePassword: (currentPassword: string, nextPassword: string) => Promise<AuthUserSnapshot | null>;
   loginWithGoogle: () => Promise<AuthUserSnapshot | null>;
   completeGoogleAccount: (credentials: {
     login: string;
@@ -509,6 +511,10 @@ function getFirebaseErrorMessage(error: unknown) {
     return "Verify your email before opening the profile and using the account.";
   }
 
+  if (code === "auth/missing-email-for-password-reset") {
+    return "This account has no linked email for password recovery.";
+  }
+
   switch (code) {
     case "auth/email-already-in-use":
       return "This email is already registered.";
@@ -743,6 +749,7 @@ function HeaderAuth() {
   const [flashMessage, setFlashMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
+  const [isPasswordResetSubmitting, setIsPasswordResetSubmitting] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false);
   const [verificationError, setVerificationError] = useState<string | null>(null);
@@ -1083,7 +1090,7 @@ function HeaderAuth() {
       setCurrentUser(snapshot);
       setVerificationSuccess(
         snapshot?.verificationEmailSent
-          ? "Verification email sent again."
+          ? "Verification email sent again. Check Spam/Junk if it is not in Inbox."
           : "Email is already verified."
       );
     } catch (error) {
@@ -1249,6 +1256,36 @@ function HeaderAuth() {
       setSubmitError(getFirebaseErrorMessage(error));
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    requestFirebaseAuthBoot();
+
+    if (!window.sakuraFirebaseAuth) {
+      setSubmitError(
+        authLoadError ?? "Firebase Auth is not ready yet. Wait a few seconds and try again."
+      );
+      return;
+    }
+
+    if (!identifier.trim()) {
+      setSubmitError("Enter your email or login first, then use password recovery.");
+      return;
+    }
+
+    setSubmitError(null);
+    setIsPasswordResetSubmitting(true);
+
+    try {
+      const resetResult = await window.sakuraFirebaseAuth.sendPasswordReset(identifier.trim());
+      setFlashMessage(
+        `Password reset email sent to ${resetResult.email}. Check Spam/Junk if it is not in Inbox.`
+      );
+    } catch (error) {
+      setSubmitError(getFirebaseErrorMessage(error));
+    } finally {
+      setIsPasswordResetSubmitting(false);
     }
   };
 
@@ -1642,6 +1679,18 @@ function HeaderAuth() {
                     placeholder="Minimum 6 characters"
                   />
                 </label>
+                {mode === "login" && !isGoogleSetupFlowActive ? (
+                  <div className="-mt-1 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={handleForgotPassword}
+                      disabled={isPasswordResetSubmitting || isSubmitting || !authReady}
+                      className="text-xs text-[#ffb7c5] transition hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isPasswordResetSubmitting ? "Sending reset email..." : "Forgot password?"}
+                    </button>
+                  </div>
+                ) : null}
 
                 {mode === "register" || isGoogleSetupFlowActive ? (
                   <label className="block">
@@ -1714,6 +1763,9 @@ function HeaderAuth() {
                   </h2>
                   <p className="mt-2 text-sm leading-relaxed text-[#f3d2c5]">
                     Verify your email to unlock your profile and use the site.
+                  </p>
+                  <p className="mt-2 text-xs leading-relaxed text-[#d7b9ae]">
+                    If you do not see the email, check your Spam/Junk folder.
                   </p>
                 </div>
 

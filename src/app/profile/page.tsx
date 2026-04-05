@@ -108,9 +108,11 @@ type Bridge = {
   ) => Promise<ProfileComment | null>;
   deleteProfileComment: (commentId: string) => Promise<string | null>;
   resendVerificationEmail: () => Promise<UserProfile | null>;
+  sendPasswordReset: (identifier: string) => Promise<{ email: string }>;
   refreshVerificationStatus: () => Promise<UserProfile | null>;
   updateDisplayName: (displayName: string) => Promise<UserProfile | null>;
   updateUsername: (username: string, currentPassword?: string) => Promise<UserProfile | null>;
+  updatePassword: (currentPassword: string, nextPassword: string) => Promise<UserProfile | null>;
   adminUpdateProfileDisplayName: (profileId: number, displayName: string) => Promise<UserProfile | null>;
   adminUpdateProfileLogin: (profileId: number, login: string) => Promise<UserProfile | null>;
   adminSetProfileBan: (profileId: number, isBanned: boolean) => Promise<UserProfile | null>;
@@ -324,7 +326,7 @@ const getProfileActionErrorMessage = (error: unknown, fallback: string) => {
   const code = getErrorCode(error);
 
   if (code === "auth/too-many-requests") {
-    return "Too many requests. Wait a little before resending the verification email.";
+    return "Too many requests. Wait a little before retrying.";
   }
 
   if (code === "comments/login-required") {
@@ -376,11 +378,15 @@ const getProfileActionErrorMessage = (error: unknown, fallback: string) => {
   }
 
   if (code === "auth/current-password-required") {
-    return "Enter your current password to change the login.";
+    return "Enter your current password.";
   }
 
   if (code === "auth/current-password-invalid") {
     return "Current password is incorrect.";
+  }
+
+  if (code === "auth/missing-email-for-password-reset") {
+    return "This account has no linked email for password recovery.";
   }
 
   return error instanceof Error ? error.message : fallback;
@@ -1349,6 +1355,13 @@ export default function ProfilePage() {
   const [isUsernameSaving, setIsUsernameSaving] = useState(false);
   const [usernameError, setUsernameError] = useState<string | null>(null);
   const [usernameSuccess, setUsernameSuccess] = useState<string | null>(null);
+  const [currentPasswordInput, setCurrentPasswordInput] = useState("");
+  const [newPasswordInput, setNewPasswordInput] = useState("");
+  const [confirmNewPasswordInput, setConfirmNewPasswordInput] = useState("");
+  const [isPasswordSaving, setIsPasswordSaving] = useState(false);
+  const [isPasswordResetSending, setIsPasswordResetSending] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
   const [isProfileControlsOpen, setIsProfileControlsOpen] = useState(false);
   const [draftRoles, setDraftRoles] = useState<string[]>([]);
   const [isRolesSaving, setIsRolesSaving] = useState(false);
@@ -2207,6 +2220,11 @@ export default function ProfilePage() {
   useEffect(() => {
     setIsProfileControlsOpen(false);
     setUsernamePasswordInput("");
+    setCurrentPasswordInput("");
+    setNewPasswordInput("");
+    setConfirmNewPasswordInput("");
+    setPasswordError(null);
+    setPasswordSuccess(null);
   }, [activeProfile?.profileId, isOwner]);
 
   useEffect(() => {
@@ -3151,6 +3169,11 @@ export default function ProfilePage() {
       setCommentInput("");
       setCommentError(null);
       setCommentSuccess(null);
+      setCurrentPasswordInput("");
+      setNewPasswordInput("");
+      setConfirmNewPasswordInput("");
+      setPasswordError(null);
+      setPasswordSuccess(null);
       setActiveMentionComposer(null);
       setCommentMentionCaret(0);
       setEditingCommentMentionCaret(0);
@@ -3181,6 +3204,11 @@ export default function ProfilePage() {
     setUsernameInput(activeProfile.login ?? "");
     setUsernameError(null);
     setUsernameSuccess(null);
+    setCurrentPasswordInput("");
+    setNewPasswordInput("");
+    setConfirmNewPasswordInput("");
+    setPasswordError(null);
+    setPasswordSuccess(null);
     setCommentInput("");
     setCommentError(null);
     setCommentSuccess(null);
@@ -4121,7 +4149,7 @@ export default function ProfilePage() {
         }
       }
 
-      setVerificationSuccess("Verification email sent.");
+      setVerificationSuccess("Verification email sent. Check Spam/Junk if it is not in Inbox.");
     } catch (error) {
       setVerificationError(getProfileActionErrorMessage(error, "Could not send verification email."));
     } finally {
@@ -4214,6 +4242,78 @@ export default function ProfilePage() {
       setUsernameError(error instanceof Error ? error.message : "Could not save login.");
     } finally {
       setIsUsernameSaving(false);
+    }
+  };
+  const handlePasswordSave = async () => {
+    const bridge = getWindowState().sakuraFirebaseAuth;
+
+    if (!bridge || !isOwner) {
+      return;
+    }
+
+    if (!currentPasswordInput) {
+      setPasswordError("Enter your current password.");
+      return;
+    }
+
+    if (!newPasswordInput) {
+      setPasswordError("Enter a new password.");
+      return;
+    }
+
+    if (newPasswordInput.length < 6) {
+      setPasswordError("New password must contain at least 6 characters.");
+      return;
+    }
+
+    if (newPasswordInput !== confirmNewPasswordInput) {
+      setPasswordError("New passwords do not match.");
+      return;
+    }
+
+    setPasswordError(null);
+    setPasswordSuccess(null);
+    setIsPasswordSaving(true);
+
+    try {
+      const snapshot = await bridge.updatePassword(currentPasswordInput, newPasswordInput);
+      applyUpdatedProfileSnapshot(snapshot);
+      setCurrentPasswordInput("");
+      setNewPasswordInput("");
+      setConfirmNewPasswordInput("");
+      setPasswordSuccess("Password updated.");
+    } catch (error) {
+      setPasswordError(getProfileActionErrorMessage(error, "Could not update password."));
+    } finally {
+      setIsPasswordSaving(false);
+    }
+  };
+  const handlePasswordResetRequest = async () => {
+    const bridge = getWindowState().sakuraFirebaseAuth;
+    const resetIdentifier = activeProfile?.email?.trim() ?? "";
+
+    if (!bridge || !isOwner) {
+      return;
+    }
+
+    if (!resetIdentifier) {
+      setPasswordError("No email is linked to this account.");
+      return;
+    }
+
+    setPasswordError(null);
+    setPasswordSuccess(null);
+    setIsPasswordResetSending(true);
+
+    try {
+      const resetResult = await bridge.sendPasswordReset(resetIdentifier);
+      setPasswordSuccess(
+        `Password reset email sent to ${resetResult.email}. Check Spam/Junk if it is not in Inbox.`
+      );
+    } catch (error) {
+      setPasswordError(getProfileActionErrorMessage(error, "Could not send password reset email."));
+    } finally {
+      setIsPasswordResetSending(false);
     }
   };
   const handleBanToggle = async () => {
@@ -5339,9 +5439,52 @@ export default function ProfilePage() {
                 {usernameSuccess ? <p className="mt-3 text-xs leading-relaxed text-[#8ce5b2]">{usernameSuccess}</p> : null}
               </div> : null}
 
+              {isOwner && activeProfile && isProfileControlsOpen && !activeProfile.isBanned ? <div className="rounded-[32px] border border-[#201517] bg-[#0d0d0d] px-7 py-7 shadow-[0_0_60px_rgba(255,183,197,0.06)]">
+                <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-[#ffb7c5]">Password</p>
+                <p className="mt-3 text-sm leading-relaxed text-gray-400">Change password directly here or send a recovery email to the linked mailbox.</p>
+                {requiresUsernamePasswordConfirmation ? <div className="mt-5">
+                  <label className="block">
+                    <span className="mb-2 block font-mono text-[10px] uppercase tracking-[0.28em] text-gray-500">Current Password</span>
+                    <input type="password" value={currentPasswordInput} autoComplete="current-password" onChange={(event) => {
+                      setCurrentPasswordInput(event.target.value);
+                      setPasswordError(null);
+                      setPasswordSuccess(null);
+                    }} className="w-full rounded-2xl border border-[#232323] bg-[#090909] px-4 py-3 text-sm text-white outline-none transition placeholder:text-gray-600 focus:border-[#ffb7c5]/55" placeholder="Enter current password" />
+                  </label>
+                </div> : <p className="mt-5 text-xs leading-relaxed text-gray-500">This account is not using email/password login. You can still use email recovery below.</p>}
+                {requiresUsernamePasswordConfirmation ? <div className="mt-4">
+                  <label className="block">
+                    <span className="mb-2 block font-mono text-[10px] uppercase tracking-[0.28em] text-gray-500">New Password</span>
+                    <input type="password" value={newPasswordInput} autoComplete="new-password" onChange={(event) => {
+                      setNewPasswordInput(event.target.value);
+                      setPasswordError(null);
+                      setPasswordSuccess(null);
+                    }} className="w-full rounded-2xl border border-[#232323] bg-[#090909] px-4 py-3 text-sm text-white outline-none transition placeholder:text-gray-600 focus:border-[#ffb7c5]/55" placeholder="Minimum 6 characters" />
+                  </label>
+                </div> : null}
+                {requiresUsernamePasswordConfirmation ? <div className="mt-4">
+                  <label className="block">
+                    <span className="mb-2 block font-mono text-[10px] uppercase tracking-[0.28em] text-gray-500">Confirm New Password</span>
+                    <input type="password" value={confirmNewPasswordInput} autoComplete="new-password" onChange={(event) => {
+                      setConfirmNewPasswordInput(event.target.value);
+                      setPasswordError(null);
+                      setPasswordSuccess(null);
+                    }} className="w-full rounded-2xl border border-[#232323] bg-[#090909] px-4 py-3 text-sm text-white outline-none transition placeholder:text-gray-600 focus:border-[#ffb7c5]/55" placeholder="Repeat new password" />
+                  </label>
+                </div> : null}
+                <p className="mt-3 text-xs leading-relaxed text-gray-500">Recovery emails may arrive in Spam/Junk.</p>
+                <div className="mt-5 flex flex-wrap items-center gap-3">
+                  {requiresUsernamePasswordConfirmation ? <button type="button" onClick={handlePasswordSave} disabled={isPasswordSaving || isPasswordResetSending} className="inline-flex items-center justify-center rounded-full border border-[#ffb7c5]/30 bg-[#ffb7c5] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-black transition hover:bg-[#ffc8d3] disabled:cursor-not-allowed disabled:opacity-60">{isPasswordSaving ? "Saving..." : "Save Password"}</button> : null}
+                  <button type="button" onClick={handlePasswordResetRequest} disabled={isPasswordResetSending || isPasswordSaving || !activeProfile.email} className="inline-flex items-center justify-center rounded-full border border-[#3a2a31] bg-[#140d11] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-[#ffb7c5] transition hover:border-[#ffb7c5]/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-60">{isPasswordResetSending ? "Sending..." : "Send Reset Email"}</button>
+                </div>
+                {passwordError ? <p className="mt-3 text-xs leading-relaxed text-[#ff9aa9]">{passwordError}</p> : null}
+                {passwordSuccess ? <p className="mt-3 text-xs leading-relaxed text-[#8ce5b2]">{passwordSuccess}</p> : null}
+              </div> : null}
+
               {isOwner && isProfileControlsOpen && shouldShowVerificationBanner ? <div className="rounded-[32px] border border-[#4d3024] bg-[linear-gradient(180deg,#1a110d_0%,#120d0a_100%)] px-7 py-7 shadow-[0_0_60px_rgba(255,183,197,0.06)]">
                 <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-[#ffb7c5]">Email not verified</p>
                 <p className="mt-3 text-sm leading-relaxed text-[#f3d2c5]">Verify your email to keep account access and login recovery enabled.</p>
+                <p className="mt-2 text-xs leading-relaxed text-[#d7b9ae]">If the letter does not appear in Inbox, check Spam/Junk.</p>
                 <div className="mt-5 flex flex-wrap items-center gap-3">
                   <button type="button" onClick={handleResendVerification} disabled={isVerificationSending} className="inline-flex items-center justify-center rounded-full border border-[#ffb7c5]/30 bg-[#ffb7c5] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-black transition hover:bg-[#ffc8d3] disabled:cursor-not-allowed disabled:opacity-60">{isVerificationSending ? "Sending..." : "Resend verification email"}</button>
                 </div>
