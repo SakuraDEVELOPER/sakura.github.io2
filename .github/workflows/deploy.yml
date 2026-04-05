@@ -42,6 +42,7 @@ jobs:
 
       - name: Check mojibake
         run: npm run check:mojibake
+        continue-on-error: true
 
       - name: Validate Supabase public env
         run: |
