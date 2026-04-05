@@ -23,7 +23,7 @@ import { readCachedAuthSnapshot } from "@/lib/auth-snapshot-cache";
 import { readCachedProfileSnapshot, writeCachedProfileSnapshot } from "@/lib/profile-cache";
 import { readCachedProfileComments, writeCachedProfileComments } from "@/lib/profile-comments-cache";
 import { readCachedSiteOnlineCount, writeCachedSiteOnlineCount } from "@/lib/site-online-cache";
-import { useLocaleText } from "@/lib/ui-locale";
+import { type UiLocale, useLocaleText } from "@/lib/ui-locale";
 
 type UserProfile = {
   uid: string;
@@ -692,10 +692,26 @@ const redirectToLocalProfile = (requestedProfileId: number, currentProfileId: nu
   window.location.replace(profilePath(localProfileId));
   return true;
 };
-const formatTime = (value: string | null) =>
-  value
-    ? new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
-    : "Not available";
+const resolveDateTimeLocale = (locale: UiLocale) => (locale === "ru" ? "ru-RU" : "en-US");
+const formatTime = (value: string | null, locale: UiLocale) => {
+  if (!value) {
+    return locale === "ru" ? "Недоступно" : "Not available";
+  }
+
+  const parsedDate = new Date(value);
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return locale === "ru" ? "Недоступно" : "Not available";
+  }
+
+  const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  return new Intl.DateTimeFormat(resolveDateTimeLocale(locale), {
+    dateStyle: "medium",
+    timeStyle: "short",
+    ...(browserTimeZone ? { timeZone: browserTimeZone } : {}),
+  }).format(parsedDate);
+};
 const isUserLikeRole = (role: string) => /^u(?:[\s_-]*s)?[\s_-]*e[\s_-]*r$/i.test(role.trim());
 const toCompactRoleToken = (role: string) =>
   role
@@ -1358,7 +1374,7 @@ const getClientBootstrap = () => {
 };
 
 export default function ProfilePage() {
-  const { t } = useLocaleText();
+  const { locale, t } = useLocaleText();
   const router = useRouter();
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const adminAvatarInputRef = useRef<HTMLInputElement | null>(null);
@@ -4902,7 +4918,7 @@ export default function ProfilePage() {
               <div className="flex flex-wrap items-center justify-end gap-3">
                 <Link href="/" className="inline-flex items-center justify-center rounded-full border border-[#2a2a2a] bg-[#101010] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-gray-300 transition hover:border-[#4a4a4a] hover:text-white">Home</Link>
                 {visibleCurrentUser?.profileId && !isOwner ? <a href={profilePath(visibleCurrentUser.profileId)} className="inline-flex items-center justify-center rounded-full border border-[#2b1b1e] bg-[#1a1012] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-[#ffb7c5] transition hover:border-[#ffb7c5]/40 hover:text-white">My Profile</a> : null}
-                {visibleCurrentUser ? <button type="button" onClick={handleLogout} disabled={isLoggingOut} className="inline-flex items-center justify-center rounded-full border border-[#ffb7c5]/30 bg-[#ffb7c5] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-black transition hover:bg-[#ffc8d3] disabled:cursor-not-allowed disabled:opacity-60">{isLoggingOut ? "Logging out..." : "Logout"}</button> : null}
+                {visibleCurrentUser ? <button type="button" onClick={handleLogout} disabled={isLoggingOut} className="inline-flex items-center justify-center rounded-full border border-[#ffb7c5]/30 bg-[#ffb7c5] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-black transition hover:bg-[#ffc8d3] disabled:cursor-not-allowed disabled:opacity-60">{isLoggingOut ? t("Logging out...", "Выход...") : t("Logout", "Выход")}</button> : null}
                 <div className="lg:hidden">
                   <SiteOnlineBadge count={siteOnlineCount} profileHrefBuilder={profilePath} />
                 </div>
@@ -5139,19 +5155,19 @@ export default function ProfilePage() {
                 <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
                   <div className="flex shrink-0 flex-col items-center gap-3">
                   {hasActiveProfileAvatar ? <AvatarMedia src={activeProfileAvatarUrl ?? ""} alt={primaryName} decoding="async" className="h-[104px] w-[104px] rounded-[30px] border border-[#2c2023] object-cover shadow-[0_0_30px_rgba(255,183,197,0.14)]" /> : <div className="flex h-[104px] w-[104px] items-center justify-center rounded-[30px] border border-[#2c2023] bg-[#1a1012] text-2xl font-black uppercase text-[#ffb7c5] shadow-[0_0_30px_rgba(255,183,197,0.14)]">{initials}</div>}
-                  <span style={{ minWidth: 104, height: 30 }} className={`inline-flex shrink-0 items-center justify-center rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] ${isActiveProfileOnline ? "border-[#1f3b2f] bg-[#0d1713] text-[#8ce5b2]" : "border-[#312228] bg-[#140d11] text-[#ffb7c5]"}`}>{isActiveProfileOnline ? "Online" : "Offline"}</span>
+                  <span style={{ minWidth: 104, height: 30 }} className={`inline-flex shrink-0 items-center justify-center rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] ${isActiveProfileOnline ? "border-[#1f3b2f] bg-[#0d1713] text-[#8ce5b2]" : "border-[#312228] bg-[#140d11] text-[#ffb7c5]"}`}>{isActiveProfileOnline ? t("Online", "Онлайн") : t("Offline", "Оффлайн")}</span>
                   </div>
                   <div className="flex min-w-0 flex-1 flex-col sm:min-h-[146px]">
                     <div className="min-w-0">
                       <h1 style={profileHeadlineStyle} className="min-w-0 truncate text-3xl font-black uppercase tracking-tighter">{primaryName}</h1>
-                      {hasUsername ? <p className="mt-1 text-sm font-medium text-[#c7d4cc]">@{activeProfile.login}</p> : isOwner ? <p className="mt-1 text-sm text-gray-500">Login not set yet.</p> : null}
+                      {hasUsername ? <p className="mt-1 text-sm font-medium text-[#c7d4cc]">@{activeProfile.login}</p> : isOwner ? <p className="mt-1 text-sm text-gray-500">{t("Login not set yet.", "Логин ещё не задан.")}</p> : null}
                       {typeof activeProfile.profileId === "number" ? <p className="mt-1 flex max-w-full items-center gap-2 text-[11px] text-[#b78a95]">
                         <span aria-hidden="true" className="inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-[#ff9fbd] shadow-[0_0_10px_rgba(255,159,189,0.7)]" />
                         <span className="truncate">UID: {activeProfile.profileId}</span>
                       </p> : null}
                       <p className={`${typeof activeProfile.profileId === "number" ? "mt-0.5" : "mt-1"} flex max-w-full items-center gap-2 text-[11px] text-[#b78a95]`}>
                         <span aria-hidden="true" className="inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-[#ff9fbd] shadow-[0_0_10px_rgba(255,159,189,0.7)]" />
-                        <span className="truncate">Account created {formatTime(activeProfile.creationTime)}</span>
+                        <span className="truncate">{t("Account created", "Аккаунт создан")} {formatTime(activeProfile.creationTime, locale)}</span>
                       </p>
                     </div>
                     <div className="mt-3 flex flex-wrap items-center gap-3 sm:mt-auto">
@@ -5231,7 +5247,7 @@ export default function ProfilePage() {
               */}
               {isOwner && activeProfile && (!isProfileControlsOpen || activeProfile.isBanned) ? <div className="rounded-[32px] border border-[#201517] bg-[radial-gradient(circle_at_top,rgba(255,183,197,0.14),transparent_72%),linear-gradient(180deg,#0d0d0d_0%,#090909_100%)] px-7 py-7 shadow-[0_0_60px_rgba(255,183,197,0.06)]">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-[#ffb7c5]">Profile Settings</p>
+                  <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-[#ffb7c5]">{t("Profile Settings", "Настройки профиля")}</p>
                   {!activeProfile.isBanned ? <button type="button" onClick={() => setIsProfileControlsOpen(true)} className="inline-flex items-center justify-center rounded-full border border-[#ffb7c5]/30 bg-[#140d11] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-[#ffb7c5] transition hover:border-[#ffb7c5]/45 hover:text-white">
                     Manage Account
                   </button> : null}
@@ -5242,7 +5258,7 @@ export default function ProfilePage() {
               </div> : null}
 
               {(!isOwner || !isProfileControlsOpen || activeProfile?.isBanned) ? <div className="rounded-[32px] border border-[#201517] bg-[#0d0d0d] px-7 py-7 shadow-[0_0_60px_rgba(255,183,197,0.06)]">
-                <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-[#ffb7c5]">Profile Comments</p>
+                <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-[#ffb7c5]">{t("Profile Comments", "Комментарии профиля")}</p>
                 {visibleCurrentUser && !isCurrentAccountBanned && !isCurrentAccountVerificationLocked ? (
                   <form onSubmit={handleCommentSubmit} className="mt-5">
                     <label className="block">
@@ -5261,7 +5277,10 @@ export default function ProfilePage() {
                         onFocus={(event) => handleMentionComposerInteraction("new", event.currentTarget)}
                         onBlur={handleMentionComposerBlur}
                         className="w-full resize-none overflow-hidden rounded-2xl border border-[#232323] bg-[#090909] px-4 py-2.5 text-sm text-white outline-none transition placeholder:text-gray-600 focus:border-[#ffb7c5]/55"
-                        placeholder={`Write something for ${primaryName}...`}
+                        placeholder={t(
+                          `Write something for ${primaryName}...`,
+                          `Напишите что-нибудь для ${primaryName}...`
+                        )}
                       />
                     </label>
                     {renderMentionSuggestions("new")}
@@ -5301,7 +5320,7 @@ export default function ProfilePage() {
                   <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-gray-500">Recent Messages</p>
                   {isCommentsLoading ? <p className="mt-4 text-sm text-gray-500">Loading comments...</p> : null}
                   {!isCommentsLoading && commentsError ? <p className="mt-4 text-sm leading-relaxed text-[#ff9aa9]">{commentsError}</p> : null}
-                  {!isCommentsLoading && !commentsError && !comments.length ? <p className="mt-4 text-sm text-gray-500">No comments yet.</p> : null}
+                  {!isCommentsLoading && !commentsError && !comments.length ? <p className="mt-4 text-sm text-gray-500">{t("No comments yet.", "Пока нет комментариев.")}</p> : null}
                   {!isCommentsLoading && !commentsError && comments.length ? <div className="mt-4 flex flex-col gap-3">
                     {comments.map((comment) => {
                       const isDeletingComment = deletingCommentId === comment.id;
@@ -5351,7 +5370,7 @@ export default function ProfilePage() {
                                 {!isConfirmingCommentDelete && isPendingComment ? <span className="shrink-0 text-[10px] font-mono uppercase tracking-[0.16em] text-[#ffb7c5]">Sending...</span> : null}
                                 {!isConfirmingCommentDelete && commentEditedBadgeText ? <span className="shrink-0 text-[10px] font-mono uppercase tracking-[0.16em] text-gray-500">{commentEditedBadgeText}</span> : null}
                               </div>
-                              {!isConfirmingCommentDelete ? <p className="mt-1 text-xs text-gray-500">{formatTime(commentDisplayTimestamp)}</p> : null}
+                              {!isConfirmingCommentDelete ? <p className="mt-1 text-xs text-gray-500">{formatTime(commentDisplayTimestamp, locale)}</p> : null}
                             </div>
                             {resolvedCommentAuthorProfile ? renderProfileHoverPreview(resolvedCommentAuthorProfile, comment.authorName, "start") : null}
                           </div>
@@ -5776,7 +5795,7 @@ export default function ProfilePage() {
                             {isTargetBanned ? "Account is banned" : "Account is active"}
                           </p>
                           {activeProfile.bannedAt ? (
-                            <p className="mt-1 text-xs text-gray-500">Updated {formatTime(activeProfile.bannedAt)}</p>
+                            <p className="mt-1 text-xs text-gray-500">{t("Updated", "Обновлено")} {formatTime(activeProfile.bannedAt, locale)}</p>
                           ) : null}
                         </div>
                         <span

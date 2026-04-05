@@ -6,6 +6,7 @@ import {
   readCachedSiteOnlineUsers,
   writeCachedSiteOnlineUsers,
 } from "@/lib/site-online-cache";
+import { useLocaleText } from "@/lib/ui-locale";
 
 type SiteOnlineUser = {
   uid: string | null;
@@ -142,6 +143,7 @@ export function SiteOnlineBadge({
   profileHrefBuilder,
   defaultVisible = false,
 }: SiteOnlineBadgeProps) {
+  const { locale, t } = useLocaleText();
   const [isHovered, setIsHovered] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -153,8 +155,10 @@ export function SiteOnlineBadge({
     isOpen && !isLoading && !loadError ? users.length : count;
   const label =
     effectiveCount === null
-      ? "Online on site"
-      : `${effectiveCount} ${effectiveCount === 1 ? "user" : "users"} online`;
+      ? t("Online on site", "На сайте онлайн")
+      : locale === "ru"
+        ? `${effectiveCount} онлайн`
+        : `${effectiveCount} ${effectiveCount === 1 ? "user" : "users"} online`;
 
   useEffect(() => {
     setUsers(readCachedSiteOnlineUsers<SiteOnlineUser>());
@@ -189,7 +193,7 @@ export function SiteOnlineBadge({
 
       if (!runtimeWindow.sakuraFirebaseAuth?.getSiteOnlineUsers) {
         setUsers([]);
-        setLoadError("Online user list is unavailable right now.");
+        setLoadError(t("Online user list is unavailable right now.", "Список пользователей онлайн сейчас недоступен."));
         return;
       }
 
@@ -206,7 +210,7 @@ export function SiteOnlineBadge({
         }
       } catch (error) {
         if (!isCancelled) {
-          setLoadError("Could not load the online user list.");
+          setLoadError(t("Could not load the online user list.", "Не удалось загрузить список пользователей онлайн."));
         }
       } finally {
         if (!isCancelled) {
@@ -246,7 +250,7 @@ export function SiteOnlineBadge({
       window.removeEventListener("offline", handleRefreshRequest);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [isOpen]);
+  }, [isOpen, t]);
 
   const isHighlighted = defaultVisible || isActive;
 
@@ -280,7 +284,7 @@ export function SiteOnlineBadge({
           <div className="flex items-center justify-between gap-3 border-b border-[#1d1d1d] px-2 pb-3">
             <div>
               <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-[#ffb7c5]">
-                Users Online
+                {t("Users Online", "Пользователи онлайн")}
               </p>
             </div>
             <span className="shrink-0 text-[11px] font-bold uppercase tracking-[0.18em] text-[#ffe2ea]">
@@ -290,7 +294,7 @@ export function SiteOnlineBadge({
 
           <div className="mt-3 max-h-[320px] overflow-y-auto pr-1">
             {isLoading ? (
-              <p className="px-2 py-3 text-sm text-gray-500">Loading online users...</p>
+              <p className="px-2 py-3 text-sm text-gray-500">{t("Loading online users...", "Загрузка пользователей онлайн...")}</p>
             ) : null}
 
             {!isLoading && loadError ? (
@@ -298,7 +302,7 @@ export function SiteOnlineBadge({
             ) : null}
 
             {!isLoading && !loadError && !users.length ? (
-              <p className="px-2 py-3 text-sm text-gray-500">No active users are visible right now.</p>
+              <p className="px-2 py-3 text-sm text-gray-500">{t("No active users are visible right now.", "Сейчас нет видимых активных пользователей.")}</p>
             ) : null}
 
             {!isLoading && !loadError && users.length ? (
@@ -350,7 +354,7 @@ export function SiteOnlineBadge({
                         </div>
                       </div>
                       <span className="shrink-0 text-[10px] font-mono uppercase tracking-[0.18em] text-[#ffb7c5]">
-                        Online
+                        {t("Online", "Онлайн")}
                       </span>
                     </div>
                   );

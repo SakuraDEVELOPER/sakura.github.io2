@@ -1479,7 +1479,7 @@ function HeaderAuth() {
             disabled={isLoggingOut}
             className="inline-flex items-center justify-center rounded-full border border-[#2b1b1e] bg-[#130d0f] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-[#ffb7c5] transition hover:border-[#ffb7c5]/50 hover:bg-[#1a1012] disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {isLoggingOut ? "Logging out..." : "Logout"}
+            {isLoggingOut ? t("Logging out...", "Выход...") : t("Logout", "Выход")}
           </button>
         </div>
       ) : (
@@ -1489,7 +1489,7 @@ function HeaderAuth() {
             onClick={() => openModal("login")}
             className="inline-flex items-center justify-center rounded-full border border-[#2a2a2a] bg-[#101010] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-gray-300 transition hover:border-[#4a4a4a] hover:text-white"
           >
-            Sign In
+            {t("Login", "Вход")}
           </button>
           <button
             type="button"
@@ -1537,7 +1537,7 @@ function HeaderAuth() {
                       ? "Complete Google Account"
                       : mode === "register"
                         ? "Registration"
-                        : "Sign In"}
+                        : t("Login", "Вход")}
                   </h2>
                   <p className="mt-2 text-sm text-gray-400">
                     {isGoogleSetupFlowActive
@@ -1575,7 +1575,7 @@ function HeaderAuth() {
                       mode === "login" ? "bg-[#ffb7c5] text-black" : "text-gray-400 hover:text-white"
                     }`}
                   >
-                    Sign In
+                    {t("Login", "Вход")}
                   </button>
                   <button
                     type="button"
@@ -1658,7 +1658,7 @@ function HeaderAuth() {
                 {mode === "register" || isGoogleSetupFlowActive ? (
                   <label className="block">
                     <span className="mb-2 block font-mono text-[10px] uppercase tracking-[0.28em] text-gray-500">
-                      Login
+                      {t("Login", "Логин")}
                     </span>
                     <input
                       type="text"
@@ -1769,12 +1769,12 @@ function HeaderAuth() {
                       ? "Finishing Google account..."
                       : mode === "register"
                       ? "Creating account..."
-                      : "Signing in..."
+                      : t("Logging in...", "Вход...")
                     : isGoogleSetupFlowActive
                       ? "Finish Google Account"
                       : mode === "register"
                       ? "Create Account"
-                      : "Sign In"}
+                      : t("Login", "Вход")}
                 </button>
               </form>
             </div>
@@ -1862,6 +1862,7 @@ function HeaderAuth() {
 }
 
 export default function Home() {
+  const { t } = useLocaleText();
   const [siteOnlineCount, setSiteOnlineCount] = useState<number | null>(null);
 
   useEffect(() => {
@@ -2040,7 +2041,7 @@ export default function Home() {
         <section className="px-10 pb-2">
           <div className="mx-auto max-w-6xl">
             <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-[#ffb7c5]">
-              Feature Showcase
+              {t("Feature Showcase", "Демонстрация функций")}
             </p>
           </div>
         </section>
@@ -2057,12 +2058,18 @@ export default function Home() {
           <FeatureBox
             delay={0.1}
             title="VMT Hooking"
-            desc="Safe function interception through virtual method tables."
+            desc={t(
+              "Safe function interception through virtual method tables.",
+              "Безопасный перехват функций через таблицы виртуальных методов."
+            )}
           />
           <FeatureBox
             delay={0.2}
             title="Signature Scanner"
-            desc="Fast offset updates after Valve patches."
+            desc={t(
+              "Fast offset updates after Valve patches.",
+              "Быстрое обновление оффсетов после патчей Valve."
+            )}
           />
         </section>
         <SetupSteps />
@@ -2073,18 +2080,19 @@ export default function Home() {
 }
 
 function TrialCta({ onClick }: { onClick: () => void }) {
+  const { t } = useLocaleText();
   return (
     <section className="px-10 pt-2 pb-4">
       <div className="mx-auto flex max-w-6xl flex-col items-center gap-5 text-center">
         <p className="text-lg leading-relaxed text-gray-300">
-          Private cheat for Dota 2.
+          {t("Private cheat for Dota 2.", "Приватный чит для Dota 2.")}
         </p>
         <button
           type="button"
           onClick={onClick}
           className="inline-flex items-center justify-center rounded-full border border-[#ffb7c5]/60 bg-[#140f12] px-8 py-3 text-sm font-semibold text-[#ffd8e1] shadow-[0_0_24px_rgba(255,183,197,0.16)] transition-all hover:border-[#ffd1db] hover:bg-[#1c1217] hover:text-white active:scale-95"
         >
-          7-day trial period
+          {t("7 day trial", "7-дневный пробный период")}
         </button>
       </div>
     </section>
@@ -2115,21 +2123,31 @@ function FeatureBox({
 }
 
 function SetupSteps() {
+  const { t } = useLocaleText();
   const steps = [
     {
       num: "01",
-      title: "Download",
-      desc: "Get the latest build and extract the archive to a convenient location.",
+      title: t("Download", "Скачайте"),
+      desc: t(
+        "Get the latest build and extract the archive to a convenient location.",
+        "Скачайте последнюю сборку и распакуйте архив в удобное место."
+      ),
     },
     {
       num: "02",
-      title: "Initialize",
-      desc: "Launch Dota 2, then open the loader as administrator.",
+      title: t("Initialize", "Запустите"),
+      desc: t(
+        "Launch Dota 2, then open the loader as administrator.",
+        "Запустите Dota 2, затем откройте лоадер от имени администратора."
+      ),
     },
     {
       num: "03",
-      title: "Configure",
-      desc: "Press INSERT in-game to open the menu and load your Lua configs.",
+      title: t("Configure", "Настройте"),
+      desc: t(
+        "Press INSERT in-game to open the menu and load your Lua configs.",
+        "Нажмите INSERT в игре, чтобы открыть меню и загрузить Lua-конфиги."
+      ),
     },
   ];
 
