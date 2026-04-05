@@ -1464,6 +1464,9 @@ export default function ProfilePage() {
   const [isAdminPasswordResetSending, setIsAdminPasswordResetSending] = useState(false);
   const [adminPasswordResetError, setAdminPasswordResetError] = useState<string | null>(null);
   const [adminPasswordResetSuccess, setAdminPasswordResetSuccess] = useState<string | null>(null);
+  const [isAdminSubscriptionSaving, setIsAdminSubscriptionSaving] = useState(false);
+  const [adminSubscriptionError, setAdminSubscriptionError] = useState<string | null>(null);
+  const [adminSubscriptionSuccess, setAdminSubscriptionSuccess] = useState<string | null>(null);
   const [adminThemeSongInput, setAdminThemeSongInput] = useState("");
   const [isAdminThemeSongSaving, setIsAdminThemeSongSaving] = useState(false);
   const [adminThemeSongError, setAdminThemeSongError] = useState<string | null>(null);
@@ -3336,6 +3339,8 @@ export default function ProfilePage() {
       setAdminVerificationSuccess(null);
       setAdminPasswordResetError(null);
       setAdminPasswordResetSuccess(null);
+      setAdminSubscriptionError(null);
+      setAdminSubscriptionSuccess(null);
       setAdminThemeSongInput("");
       setAdminThemeSongError(null);
       setAdminThemeSongSuccess(null);
@@ -3382,6 +3387,8 @@ export default function ProfilePage() {
     setAdminVerificationSuccess(null);
     setAdminPasswordResetError(null);
     setAdminPasswordResetSuccess(null);
+    setAdminSubscriptionError(null);
+    setAdminSubscriptionSuccess(null);
     setAdminThemeSongInput(
       normalizeProfileThemeSongKey(activeProfile.themeSongKey) ??
         (typeof activeProfile.profileId === "number"
@@ -4346,6 +4353,49 @@ export default function ProfilePage() {
       setRolesError(error instanceof Error ? error.message : "Could not update roles.");
     } finally {
       setIsRolesSaving(false);
+    }
+  };
+
+  const handleAdminGrantActiveSubscription = async () => {
+    const bridge = getWindowState().sakuraFirebaseAuth;
+
+    if (!bridge || !activeProfile?.profileId || !canManageRoleAssignments) {
+      return;
+    }
+
+    setAdminSubscriptionError(null);
+    setAdminSubscriptionSuccess(null);
+    setIsAdminSubscriptionSaving(true);
+
+    try {
+      const nextRoles = normalizeRoleSelection([
+        ...(activeProfile.roles ?? []).filter(
+          (role) => normalizeRoleName(role) !== "test period"
+        ),
+        "subscriber",
+      ]);
+      const snapshot = await bridge.updateProfileRoles(activeProfile.profileId, nextRoles);
+
+      if (snapshot) {
+        applyUpdatedProfileSnapshot(snapshot);
+        setProfile(snapshot);
+        if (visibleCurrentUser?.uid === snapshot.uid) {
+          setCurrentUser(snapshot);
+        }
+        setDraftRoles(normalizeRoleSelection(snapshot.roles));
+      } else {
+        setDraftRoles(nextRoles);
+      }
+
+      setAdminSubscriptionSuccess(
+        t("Active subscription granted.", "Активная подписка выдана.")
+      );
+    } catch (error) {
+      setAdminSubscriptionError(
+        error instanceof Error ? error.message : "Could not grant active subscription."
+      );
+    } finally {
+      setIsAdminSubscriptionSaving(false);
     }
   };
 
@@ -6115,6 +6165,54 @@ export default function ProfilePage() {
                       ) : null}
                       {banError ? <p className="mt-3 text-xs leading-relaxed text-[#ff9aa9]">{banError}</p> : null}
                       {banSuccess ? <p className="mt-3 text-xs leading-relaxed text-[#8ce5b2]">{banSuccess}</p> : null}
+                    </section>
+
+                    <section className="rounded-[24px] border border-[#1d1d1d] bg-[#0d0d0d] p-5">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-gray-500">
+                            {t("Subscription Access", "Доступ по подписке")}
+                          </p>
+                          <p className="mt-2 text-sm font-semibold text-white">
+                            {hasActiveSubscriptionRole
+                              ? t("Subscription is active", "Подписка активна")
+                              : t("Subscription is inactive", "Подписка неактивна")}
+                          </p>
+                        </div>
+                        <span
+                          className={`inline-flex shrink-0 rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] ${
+                            hasActiveSubscriptionRole
+                              ? "border-[#1f3b2f] bg-[#0d1713] text-[#8ce5b2]"
+                              : "border-[#3a3a3a] bg-[#111111] text-[#a3a3a3]"
+                          }`}
+                        >
+                          {hasActiveSubscriptionRole ? t("Active", "Активна") : t("Inactive", "Неактивна")}
+                        </span>
+                      </div>
+                      <div className="mt-4 flex flex-wrap items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={handleAdminGrantActiveSubscription}
+                          disabled={isAdminSubscriptionSaving || isRolesSaving || hasSubscriberRole}
+                          className="inline-flex items-center justify-center rounded-full border border-[#ffb7c5]/30 bg-[#ffb7c5] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-black transition hover:bg-[#ffc8d3] disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {isAdminSubscriptionSaving
+                            ? t("Saving...", "Сохранение...")
+                            : t("Grant Active Subscription", "Выдать активную подписку")}
+                        </button>
+                      </div>
+                      {hasSubscriberRole ? (
+                        <p className="mt-3 text-xs leading-relaxed text-gray-500">
+                          {t("This profile already has an active subscription role.", "У этого профиля уже есть роль активной подписки.")}
+                        </p>
+                      ) : null}
+                      {hasTestPeriodRole && !hasSubscriberRole ? (
+                        <p className="mt-3 text-xs leading-relaxed text-gray-500">
+                          {t("Granting active subscription replaces the test period role.", "Выдача активной подписки заменяет роль тестового периода.")}
+                        </p>
+                      ) : null}
+                      {adminSubscriptionError ? <p className="mt-3 text-xs leading-relaxed text-[#ff9aa9]">{adminSubscriptionError}</p> : null}
+                      {adminSubscriptionSuccess ? <p className="mt-3 text-xs leading-relaxed text-[#8ce5b2]">{adminSubscriptionSuccess}</p> : null}
                     </section>
 
                     <section className="rounded-[24px] border border-[#1d1d1d] bg-[#0d0d0d] p-5">
