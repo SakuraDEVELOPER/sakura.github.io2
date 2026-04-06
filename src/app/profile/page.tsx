@@ -2399,11 +2399,14 @@ useEffect(() => {
       : null;
   const shouldPlayProfileThemeSong = Boolean(profileThemeSongSrc || profileThemeEmbedUrl);
   const profileThemeDisplayedDuration = profileThemeUsesEmbeddedPlayer
-    ? PROFILE_THEME_EMBED_FALLBACK_DURATION_SECONDS
+    ? profileThemeDuration > 0
+      ? profileThemeDuration
+      : PROFILE_THEME_EMBED_FALLBACK_DURATION_SECONDS
     : profileThemeDuration;
-  const profileThemeDisplayedCurrentTime = profileThemeUsesEmbeddedPlayer
-    ? Math.min(profileThemeCurrentTime, PROFILE_THEME_EMBED_FALLBACK_DURATION_SECONDS)
-    : Math.min(profileThemeCurrentTime, profileThemeDuration || profileThemeCurrentTime);
+  const profileThemeDisplayedCurrentTime = Math.min(
+    profileThemeCurrentTime,
+    profileThemeDisplayedDuration || profileThemeCurrentTime
+  );
   useEffect(() => {
     const audio = profileThemeAudioRef.current;
 
@@ -2563,9 +2566,11 @@ useEffect(() => {
         return null;
       }
 
-      return rawValue > PROFILE_THEME_EMBED_FALLBACK_DURATION_SECONDS * 4
-        ? rawValue / 1000
-        : rawValue;
+      if (profileThemeEmbedProvider === "soundcloud") {
+        return rawValue > 1000 ? rawValue / 1000 : rawValue;
+      }
+
+      return rawValue;
     };
 
     const syncDuration = (rawValue: unknown) => {
@@ -2826,7 +2831,10 @@ useEffect(() => {
 
     const intervalId = window.setInterval(() => {
       setProfileThemeCurrentTime((currentValue) => {
-        const maxDuration = PROFILE_THEME_EMBED_FALLBACK_DURATION_SECONDS;
+        const maxDuration =
+          profileThemeDuration > 0
+            ? profileThemeDuration
+            : PROFILE_THEME_EMBED_FALLBACK_DURATION_SECONDS;
 
         return currentValue >= maxDuration ? maxDuration : currentValue + 1;
       });
@@ -2836,6 +2844,7 @@ useEffect(() => {
       window.clearInterval(intervalId);
     };
   }, [
+    profileThemeDuration,
     profileThemeIsPlaying,
     profileThemeUsesEmbeddedPlayer,
   ]);
