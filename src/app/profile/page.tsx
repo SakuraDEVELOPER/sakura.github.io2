@@ -346,7 +346,11 @@ const resolveExternalProfileThemeSongSelection = (
 
     if (sanitizedVideoId.length >= 6) {
       const sourceUrl = `https://www.youtube.com/watch?v=${sanitizedVideoId}`;
-      const embedUrl = `https://www.youtube-nocookie.com/embed/${sanitizedVideoId}?autoplay=1&rel=0&enablejsapi=1&playsinline=1`;
+      const originQuery =
+        typeof window !== "undefined" && window.location.origin
+          ? `&origin=${encodeURIComponent(window.location.origin)}`
+          : "";
+      const embedUrl = `https://www.youtube-nocookie.com/embed/${sanitizedVideoId}?autoplay=1&rel=0&enablejsapi=1&playsinline=1${originQuery}`;
       return buildSelection("YouTube", sourceUrl, embedUrl, 168, "youtube");
     }
   }
@@ -358,7 +362,7 @@ const resolveExternalProfileThemeSongSelection = (
 
     if (supportedEntityTypes.has(entityType) && entityId) {
       const sourceUrl = `https://open.spotify.com/${entityType}/${entityId}`;
-      const embedUrl = `https://open.spotify.com/embed/${entityType}/${entityId}?utm_source=generator`;
+      const embedUrl = `https://open.spotify.com/embed/${entityType}/${entityId}?utm_source=generator&autoplay=1`;
       const title =
         entityType === "track"
           ? "Spotify Track"
@@ -372,7 +376,7 @@ const resolveExternalProfileThemeSongSelection = (
 
   if (host === "soundcloud.com" || host === "m.soundcloud.com" || host === "on.soundcloud.com") {
     const sourceUrl = `https://${host}${parsedUrl.pathname}${parsedUrl.search}`;
-    const embedUrl = `https://w.soundcloud.com/player/?url=${encodeURIComponent(sourceUrl)}&auto_play=true&hide_related=true&show_teaser=false&show_comments=false&show_user=true&show_reposts=false&visual=false`;
+    const embedUrl = `https://w.soundcloud.com/player/?url=${encodeURIComponent(sourceUrl)}&auto_play=true&enable_api=true&hide_related=true&show_teaser=false&show_comments=false&show_user=true&show_reposts=false&visual=false`;
     return buildSelection("SoundCloud", sourceUrl, embedUrl, 166, "soundcloud");
   }
 
@@ -1708,6 +1712,7 @@ export default function ProfilePage() {
   const [profileThemeCurrentTime, setProfileThemeCurrentTime] = useState(0);
   const [profileThemeDuration, setProfileThemeDuration] = useState(0);
   const [profileThemeVolume, setProfileThemeVolume] = useState(0.34);
+  const [profileThemeEmbedReloadToken, setProfileThemeEmbedReloadToken] = useState(0);
   const [isProfileThemePanelOpen, setIsProfileThemePanelOpen] = useState(false);
   const [previousProfileId, setPreviousProfileId] = useState<number | null | undefined>(undefined);
   const [nextProfileId, setNextProfileId] = useState<number | null | undefined>(undefined);
@@ -2398,6 +2403,12 @@ useEffect(() => {
       ? `${profileThemeProfileId}:${profileThemeSelection.key}`
       : null;
   const shouldPlayProfileThemeSong = Boolean(profileThemeSongSrc || profileThemeEmbedUrl);
+  const profileThemeActiveEmbedUrl =
+    profileThemeUsesEmbeddedPlayer && profileThemeEmbedUrl
+      ? profileThemeEmbedProvider === "spotify" && profileThemeEmbedReloadToken > 0
+        ? `${profileThemeEmbedUrl}${profileThemeEmbedUrl.includes("?") ? "&" : "?"}sakura_play=${profileThemeEmbedReloadToken}`
+        : profileThemeEmbedUrl
+      : null;
   const profileThemeDisplayedDuration = profileThemeUsesEmbeddedPlayer
     ? profileThemeDuration > 0
       ? profileThemeDuration
@@ -2719,7 +2730,7 @@ useEffect(() => {
     }
 
     let attemptCount = 0;
-    const maxAttempts = 12;
+    const maxAttempts = 20;
     const intervalId = window.setInterval(() => {
       const frameWindow = profileThemeEmbedFrameRef.current?.contentWindow;
 
@@ -2763,7 +2774,9 @@ useEffect(() => {
         );
       }
 
-      window.clearInterval(intervalId);
+      if (attemptCount >= maxAttempts) {
+        window.clearInterval(intervalId);
+      }
     }, 250);
 
     return () => {
@@ -5769,6 +5782,15 @@ useEffect(() => {
     if (profileThemeUsesEmbeddedPlayer) {
       const nextIsPlaying = !profileThemeIsPlaying;
       setProfileThemeIsPlaying(nextIsPlaying);
+
+      if (profileThemeEmbedProvider === "spotify") {
+        if (nextIsPlaying) {
+          setProfileThemeCurrentTime(0);
+          setProfileThemeEmbedReloadToken(Date.now());
+        }
+        return;
+      }
+
       postProfileThemeEmbedCommand(nextIsPlaying ? "play" : "pause");
       return;
     }
@@ -5856,10 +5878,10 @@ useEffect(() => {
         aria-hidden="true"
         className="hidden"
       />
-      {profileThemeUsesEmbeddedPlayer && profileThemeEmbedUrl ? (
+      {profileThemeUsesEmbeddedPlayer && profileThemeActiveEmbedUrl ? (
         <iframe
           ref={profileThemeEmbedFrameRef}
-          src={profileThemeEmbedUrl}
+          src={profileThemeActiveEmbedUrl}
           title={profileThemeTitle ?? "Profile Theme"}
           loading="lazy"
           tabIndex={-1}
