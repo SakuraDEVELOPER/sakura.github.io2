@@ -207,6 +207,7 @@ const PROFILE_NAV_PREFETCH_PER_SIDE = 2;
 const PROFILE_THEME_TIMELINE_UPDATE_STEP_SECONDS = 0.24;
 const FUNPAY_SUBSCRIPTION_URL = "https://funpay.com/lots/offer?id=67099133";
 const FUNPAY_ICON_URL = "https://funpay.com/favicon.ico";
+const FUNPAY_DONATION_TRACK_SRC = `${repoBasePath}/music/kto-to-mne-zadonatil.mp3`;
 const STALE_RUNTIME_RECOVERY_STORAGE_KEY = "sakura-stale-runtime-recovery-at";
 const STALE_RUNTIME_RECOVERY_COUNT_STORAGE_KEY = "sakura-stale-runtime-recovery-count";
 const STALE_RUNTIME_RECOVERY_COOLDOWN_MS = 5 * 60 * 1000;
@@ -1518,6 +1519,7 @@ export default function ProfilePage() {
   const [isHeaderProfileSearchLoading, setIsHeaderProfileSearchLoading] = useState(false);
   const commentTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const profileThemeAudioRef = useRef<HTMLAudioElement | null>(null);
+  const funPayTrackAudioRef = useRef<HTMLAudioElement | null>(null);
   const profileThemeAutoplayAttemptedRef = useRef<string | null>(null);
   const mentionSuggestionsCacheRef = useRef<Record<string, UserProfile[]>>({});
   const editingCommentTextareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -2310,7 +2312,7 @@ export default function ProfilePage() {
   const isCurrentAccountBanned = visibleCurrentUser?.isBanned === true;
   const subscriptionStatus = hasActiveSubscriptionRole ? "active" : "inactive";
   const subscriptionSummary = {
-    title: t("Cheat Access", "Доступ к читу"),
+    title: "",
     status: subscriptionStatus,
     description: hasActiveSubscriptionRole
       ? t("Enjoy using it.", "Sakura Cheat Dota 2")
@@ -5193,6 +5195,17 @@ export default function ProfilePage() {
       profileThemeAudioRef.current.volume = normalizedVolume;
     }
   };
+  const handleFunPayLinkClick = useCallback(() => {
+    const audio = funPayTrackAudioRef.current;
+
+    if (!audio) {
+      return;
+    }
+
+    audio.currentTime = 0;
+    void audio.play().catch(() => {
+    });
+  }, []);
   return (
     <main
       data-profile-build={PROFILE_BUILD_MARKER}
@@ -5206,6 +5219,13 @@ export default function ProfilePage() {
       <audio
         ref={profileThemeAudioRef}
         src={profileThemeSongSrc ?? undefined}
+        preload="auto"
+        aria-hidden="true"
+        className="hidden"
+      />
+      <audio
+        ref={funPayTrackAudioRef}
+        src={FUNPAY_DONATION_TRACK_SRC}
         preload="auto"
         aria-hidden="true"
         className="hidden"
@@ -5515,6 +5535,7 @@ export default function ProfilePage() {
                           href={FUNPAY_SUBSCRIPTION_URL}
                           target="_blank"
                           rel="noopener noreferrer"
+                          onClick={handleFunPayLinkClick}
                           className="inline-flex items-center gap-2 rounded-full border border-[#3a2a31] bg-[#140d11] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-[#ffb7c5] transition hover:border-[#ffb7c5]/45 hover:text-white"
                         >
                           <img
