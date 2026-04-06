@@ -2752,18 +2752,14 @@ useEffect(() => {
   useEffect(() => {
     if (
       !profileThemeUsesEmbeddedPlayer ||
-      !profileThemeIsPlaying ||
-      !profileThemeUsesFallbackEmbeddedTimeline
+      !profileThemeIsPlaying
     ) {
       return;
     }
 
     const intervalId = window.setInterval(() => {
       setProfileThemeCurrentTime((currentValue) => {
-        const maxDuration =
-          profileThemeDuration > 0
-            ? profileThemeDuration
-            : PROFILE_THEME_EMBED_FALLBACK_DURATION_SECONDS;
+        const maxDuration = PROFILE_THEME_EMBED_FALLBACK_DURATION_SECONDS;
 
         return currentValue >= maxDuration ? maxDuration : currentValue + 1;
       });
@@ -2773,10 +2769,8 @@ useEffect(() => {
       window.clearInterval(intervalId);
     };
   }, [
-    profileThemeDuration,
     profileThemeIsPlaying,
     profileThemeUsesEmbeddedPlayer,
-    profileThemeUsesFallbackEmbeddedTimeline,
   ]);
 
   const isActiveProfileOnline = isPresenceOnlineNow(activePresence);
