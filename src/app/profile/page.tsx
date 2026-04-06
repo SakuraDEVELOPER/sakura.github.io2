@@ -5785,8 +5785,16 @@ useEffect(() => {
 
       if (profileThemeEmbedProvider === "spotify") {
         if (nextIsPlaying) {
+          const nextToken = Date.now();
           setProfileThemeCurrentTime(0);
-          setProfileThemeEmbedReloadToken(Date.now());
+          setProfileThemeEmbedReloadToken(nextToken);
+
+          const frame = profileThemeEmbedFrameRef.current;
+
+          if (frame && profileThemeEmbedUrl) {
+            const joiner = profileThemeEmbedUrl.includes("?") ? "&" : "?";
+            frame.src = `${profileThemeEmbedUrl}${joiner}sakura_play=${nextToken}`;
+          }
         }
         return;
       }
@@ -5888,7 +5896,8 @@ useEffect(() => {
           aria-hidden="true"
           referrerPolicy="strict-origin-when-cross-origin"
           allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-          className="pointer-events-none fixed left-0 top-0 h-0 w-0 opacity-0"
+          style={{ width: 320, height: Math.max(152, Math.min(profileThemeEmbedHeight, 352)) }}
+          className="pointer-events-none fixed -left-[9999px] top-0 border-0 opacity-0"
         />
       ) : null}
       <div className="mx-auto max-w-6xl">
@@ -7261,6 +7270,7 @@ useEffect(() => {
     </main>
   );
 }
+
 
 
 
