@@ -97,6 +97,7 @@ type ProfileThemeSelection = {
   embedUrl?: string;
   sourceUrl?: string;
   embedHeight?: number;
+  embedProvider?: "youtube" | "spotify" | "soundcloud" | "yandex" | "vk";
 };
 
 type Bridge = {
@@ -214,6 +215,7 @@ const SITE_ONLINE_COUNT_REFRESH_DEBOUNCE_MS = 280;
 const PROFILE_NAV_SCAN_LIMIT = 300;
 const PROFILE_NAV_PREFETCH_PER_SIDE = 2;
 const PROFILE_THEME_TIMELINE_UPDATE_STEP_SECONDS = 0.24;
+const PROFILE_THEME_EMBED_FALLBACK_DURATION_SECONDS = 60 * 60;
 const FUNPAY_SUBSCRIPTION_URL = "https://funpay.com/lots/offer?id=67099133";
 const FUNPAY_ICON_URL = "https://funpay.com/favicon.ico";
 const FUNPAY_DONATION_TRACK_SRC = `${repoBasePath}/music/kto-to-mne-zadonatil.mp3`;
@@ -308,7 +310,8 @@ const resolveExternalProfileThemeSongSelection = (
     title: string,
     sourceUrl: string,
     embedUrl: string,
-    embedHeight: number
+    embedHeight: number,
+    embedProvider: "youtube" | "spotify" | "soundcloud" | "yandex" | "vk"
   ): ProfileThemeSelection | null => {
     const normalizedSourceUrl = sourceUrl.trim();
 
@@ -322,6 +325,7 @@ const resolveExternalProfileThemeSongSelection = (
       sourceUrl: normalizedSourceUrl,
       embedUrl,
       embedHeight,
+      embedProvider,
     };
   };
 
@@ -342,8 +346,8 @@ const resolveExternalProfileThemeSongSelection = (
 
     if (sanitizedVideoId.length >= 6) {
       const sourceUrl = `https://www.youtube.com/watch?v=${sanitizedVideoId}`;
-      const embedUrl = `https://www.youtube-nocookie.com/embed/${sanitizedVideoId}?autoplay=1&rel=0`;
-      return buildSelection("YouTube", sourceUrl, embedUrl, 168);
+      const embedUrl = `https://www.youtube-nocookie.com/embed/${sanitizedVideoId}?autoplay=1&rel=0&enablejsapi=1&playsinline=1`;
+      return buildSelection("YouTube", sourceUrl, embedUrl, 168, "youtube");
     }
   }
 
@@ -362,14 +366,14 @@ const resolveExternalProfileThemeSongSelection = (
             ? "Spotify Episode"
             : "Spotify";
       const embedHeight = entityType === "track" || entityType === "episode" ? 152 : 352;
-      return buildSelection(title, sourceUrl, embedUrl, embedHeight);
+      return buildSelection(title, sourceUrl, embedUrl, embedHeight, "spotify");
     }
   }
 
   if (host === "soundcloud.com" || host === "m.soundcloud.com" || host === "on.soundcloud.com") {
     const sourceUrl = `https://${host}${parsedUrl.pathname}${parsedUrl.search}`;
     const embedUrl = `https://w.soundcloud.com/player/?url=${encodeURIComponent(sourceUrl)}&auto_play=true&hide_related=false&show_comments=false&show_user=true&show_reposts=false&visual=false`;
-    return buildSelection("SoundCloud", sourceUrl, embedUrl, 166);
+    return buildSelection("SoundCloud", sourceUrl, embedUrl, 166, "soundcloud");
   }
 
   if (host === "music.yandex.ru" || host === "music.yandex.com") {
@@ -382,12 +386,12 @@ const resolveExternalProfileThemeSongSelection = (
         const trackId = pathSegments[3];
         const sourceUrl = `https://music.yandex.ru/album/${albumId}/track/${trackId}`;
         const embedUrl = `https://music.yandex.ru/iframe/#track/${trackId}/${albumId}`;
-        return buildSelection("Yandex Music", sourceUrl, embedUrl, 168);
+        return buildSelection("Yandex Music", sourceUrl, embedUrl, 168, "yandex");
       }
 
       const sourceUrl = `https://music.yandex.ru/album/${albumId}`;
       const embedUrl = `https://music.yandex.ru/iframe/#album/${albumId}`;
-      return buildSelection("Yandex Music", sourceUrl, embedUrl, 352);
+      return buildSelection("Yandex Music", sourceUrl, embedUrl, 352, "yandex");
     }
 
     if (firstSegment === "users" && pathSegments[1] && (pathSegments[2] ?? "").toLowerCase() === "playlists" && pathSegments[3]) {
@@ -395,7 +399,7 @@ const resolveExternalProfileThemeSongSelection = (
       const playlistId = pathSegments[3];
       const sourceUrl = `https://music.yandex.ru/users/${owner}/playlists/${playlistId}`;
       const embedUrl = `https://music.yandex.ru/iframe/#playlist/${owner}/${playlistId}`;
-      return buildSelection("Yandex Music", sourceUrl, embedUrl, 352);
+      return buildSelection("Yandex Music", sourceUrl, embedUrl, 352, "yandex");
     }
   }
 
@@ -411,11 +415,11 @@ const resolveExternalProfileThemeSongSelection = (
         ? `${embedBase}&hash=${encodeURIComponent(hash)}&autoplay=1`
         : `${embedBase}&autoplay=1`;
       const sourceUrl = `https://vk.com/video${oid}_${id}`;
-      return buildSelection("VK", sourceUrl, embedUrl, 168);
+      return buildSelection("VK", sourceUrl, embedUrl, 168, "vk");
     }
 
     const sourceUrl = `https://vk.com${parsedUrl.pathname}${parsedUrl.search}`;
-    return buildSelection("VK", sourceUrl, sourceUrl, 168);
+    return buildSelection("VK", sourceUrl, sourceUrl, 168, "vk");
   }
 
   return null;
@@ -1715,6 +1719,7 @@ export default function ProfilePage() {
   const [isHeaderProfileSearchLoading, setIsHeaderProfileSearchLoading] = useState(false);
   const commentTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const profileThemeAudioRef = useRef<HTMLAudioElement | null>(null);
+  const profileThemeEmbedFrameRef = useRef<HTMLIFrameElement | null>(null);
   const funPayTrackAudioRef = useRef<HTMLAudioElement | null>(null);
   const profileThemeAutoplayAttemptedRef = useRef<string | null>(null);
   const mentionSuggestionsCacheRef = useRef<Record<string, UserProfile[]>>({});
@@ -2380,6 +2385,7 @@ useEffect(() => {
   const profileThemeEmbedUrl = profileThemeSelection?.embedUrl ?? null;
   const profileThemeSourceUrl = profileThemeSelection?.sourceUrl ?? null;
   const profileThemeEmbedHeight = profileThemeSelection?.embedHeight ?? 168;
+  const profileThemeEmbedProvider = profileThemeSelection?.embedProvider ?? null;
   const profileThemeUsesEmbeddedPlayer = Boolean(profileThemeEmbedUrl);
   const profileThemeUsesNativeAudio = Boolean(profileThemeSongSrc);
   const profileThemeTitle = profileThemeSelection?.title ?? null;
@@ -2411,9 +2417,9 @@ useEffect(() => {
     if (!profileThemeUsesNativeAudio) {
       audio.pause();
       audio.currentTime = 0;
-      setProfileThemeIsPlaying(false);
+      setProfileThemeIsPlaying(true);
       setProfileThemeCurrentTime(0);
-      setProfileThemeDuration(0);
+      setProfileThemeDuration(PROFILE_THEME_EMBED_FALLBACK_DURATION_SECONDS);
       profileThemeAutoplayAttemptedRef.current = profileThemeSongKey;
       return;
     }
@@ -2437,7 +2443,6 @@ useEffect(() => {
     profileThemeSongKey,
     profileThemeSongSrc,
     profileThemeUsesNativeAudio,
-    profileThemeVolume,
     shouldPlayProfileThemeSong,
   ]);
 
@@ -2513,6 +2518,37 @@ useEffect(() => {
       audio.removeEventListener("ended", syncAudioStateImmediate);
     };
   }, [profileThemeSongSrc, profileThemeUsesNativeAudio]);
+
+  useEffect(() => {
+    if (!profileThemeUsesEmbeddedPlayer || !shouldPlayProfileThemeSong) {
+      return;
+    }
+
+    setProfileThemeDuration((currentValue) =>
+      currentValue > 0 ? currentValue : PROFILE_THEME_EMBED_FALLBACK_DURATION_SECONDS
+    );
+  }, [profileThemeSongKey, profileThemeUsesEmbeddedPlayer, shouldPlayProfileThemeSong]);
+
+  useEffect(() => {
+    if (!profileThemeUsesEmbeddedPlayer || !profileThemeIsPlaying) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setProfileThemeCurrentTime((currentValue) => {
+        const maxDuration =
+          profileThemeDuration > 0
+            ? profileThemeDuration
+            : PROFILE_THEME_EMBED_FALLBACK_DURATION_SECONDS;
+
+        return currentValue >= maxDuration ? maxDuration : currentValue + 1;
+      });
+    }, 1000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [profileThemeDuration, profileThemeIsPlaying, profileThemeUsesEmbeddedPlayer]);
 
   const isActiveProfileOnline = isPresenceOnlineNow(activePresence);
   const hasUsername = Boolean(activeProfile?.login?.trim());
@@ -5379,8 +5415,62 @@ useEffect(() => {
     }
   };
 
+  const postProfileThemeEmbedCommand = useCallback((command: "play" | "pause" | "seek" | "volume", value?: number) => {
+    const frameWindow = profileThemeEmbedFrameRef.current?.contentWindow;
+
+    if (!frameWindow || !profileThemeUsesEmbeddedPlayer || !profileThemeEmbedProvider) {
+      return;
+    }
+
+    if (profileThemeEmbedProvider === "youtube" || profileThemeEmbedProvider === "vk") {
+      const func =
+        command === "play"
+          ? "playVideo"
+          : command === "pause"
+            ? "pauseVideo"
+            : command === "seek"
+              ? "seekTo"
+              : "setVolume";
+      const args =
+        command === "seek"
+          ? [Math.max(0, typeof value === "number" && Number.isFinite(value) ? value : 0), true]
+          : command === "volume"
+            ? [Math.round(Math.max(0, Math.min(1, typeof value === "number" && Number.isFinite(value) ? value : 0)) * 100)]
+            : [];
+
+      frameWindow.postMessage(JSON.stringify({ event: "command", func, args }), "*");
+      return;
+    }
+
+    if (profileThemeEmbedProvider === "soundcloud") {
+      const payload =
+        command === "seek"
+          ? { method: "seekTo", value: Math.max(0, typeof value === "number" && Number.isFinite(value) ? value : 0) * 1000 }
+          : command === "volume"
+            ? {
+                method: "setVolume",
+                value: Math.round(Math.max(0, Math.min(1, typeof value === "number" && Number.isFinite(value) ? value : 0)) * 100),
+              }
+            : { method: command };
+
+      frameWindow.postMessage(JSON.stringify(payload), "*");
+      return;
+    }
+
+    const genericPayload = {
+      command,
+      value,
+    };
+
+    frameWindow.postMessage(genericPayload, "*");
+    frameWindow.postMessage(JSON.stringify(genericPayload), "*");
+  }, [profileThemeEmbedProvider, profileThemeUsesEmbeddedPlayer]);
+
   const handleProfileThemeToggle = async () => {
     if (profileThemeUsesEmbeddedPlayer) {
+      const nextIsPlaying = !profileThemeIsPlaying;
+      setProfileThemeIsPlaying(nextIsPlaying);
+      postProfileThemeEmbedCommand(nextIsPlaying ? "play" : "pause");
       return;
     }
 
@@ -5407,6 +5497,11 @@ useEffect(() => {
 
     setProfileThemeCurrentTime(nextTime);
 
+    if (profileThemeUsesEmbeddedPlayer && Number.isFinite(nextTime)) {
+      postProfileThemeEmbedCommand("seek", nextTime);
+      return;
+    }
+
     if (audio && Number.isFinite(nextTime)) {
       audio.currentTime = nextTime;
     }
@@ -5417,6 +5512,11 @@ useEffect(() => {
     const normalizedVolume = Math.min(1, Math.max(0, Number.isFinite(nextVolume) ? nextVolume : 0));
 
     setProfileThemeVolume(normalizedVolume);
+
+    if (profileThemeUsesEmbeddedPlayer) {
+      postProfileThemeEmbedCommand("volume", normalizedVolume);
+      return;
+    }
 
     if (profileThemeAudioRef.current) {
       profileThemeAudioRef.current.volume = normalizedVolume;
@@ -6254,6 +6354,7 @@ useEffect(() => {
                   {profileThemeUsesEmbeddedPlayer && profileThemeEmbedUrl ? (
                     <div className="mt-4 overflow-hidden rounded-[20px] border border-[#2a181d] bg-[linear-gradient(180deg,rgba(18,11,14,0.96)_0%,rgba(11,11,12,0.96)_100%)] p-1.5 shadow-[inset_0_1px_0_rgba(255,183,197,0.04)]">
                       <iframe
+                        ref={profileThemeEmbedFrameRef}
                         src={profileThemeEmbedUrl}
                         title={profileThemeTitle ?? "Profile Theme"}
                         loading="lazy"
@@ -6283,7 +6384,6 @@ useEffect(() => {
                           void handleProfileThemeToggle();
                         }}
                         aria-label={profileThemeIsPlaying ? "Pause music" : "Play music"}
-                        disabled={profileThemeUsesEmbeddedPlayer}
                         className={`inline-flex h-10 min-w-10 shrink-0 items-center justify-center rounded-full border transition ${
                           profileThemeIsPlaying
                             ? "border-[#ffb7c5]/45 bg-[#ffb7c5] text-black shadow-[0_0_22px_rgba(255,183,197,0.22)] hover:bg-[#ffc8d3]"
@@ -6304,7 +6404,7 @@ useEffect(() => {
                           step={0.1}
                           value={Math.min(profileThemeCurrentTime, profileThemeDuration || profileThemeCurrentTime)}
                           onChange={handleProfileThemeSeek}
-                          disabled={profileThemeUsesEmbeddedPlayer || profileThemeDuration <= 0}
+                          disabled={profileThemeDuration <= 0}
                           style={buildMusicSliderStyle(
                             Math.min(profileThemeCurrentTime, profileThemeDuration || profileThemeCurrentTime),
                             profileThemeDuration > 0 ? profileThemeDuration : 1
@@ -6326,7 +6426,6 @@ useEffect(() => {
                         step={0.01}
                         value={profileThemeVolume}
                         onChange={handleProfileThemeVolumeChange}
-                        disabled={profileThemeUsesEmbeddedPlayer}
                         style={buildMusicSliderStyle(profileThemeVolume, 1)}
                         className={musicSliderClassName}
                       />
@@ -6836,4 +6935,11 @@ useEffect(() => {
     </main>
   );
 }
+
+
+
+
+
+
+
 
