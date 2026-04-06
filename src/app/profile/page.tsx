@@ -1775,14 +1775,7 @@ export default function ProfilePage() {
     element.style.height = `${element.scrollHeight}px`;
   };
 
-  useEffect(() => {
-    if (!profileThemeUsesEmbeddedPlayer) {
-      return;
-    }
-
-    setProfileThemeEmbeddedIsPlaying(true);
-  }, [profileThemeSongKey, profileThemeUsesEmbeddedPlayer]);
-  useEffect(() => {
+useEffect(() => {
     if (!isHeaderProfileSearchOpen) {
       return;
     }
