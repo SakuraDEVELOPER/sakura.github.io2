@@ -1713,6 +1713,7 @@ export default function ProfilePage() {
   const [profileThemeDuration, setProfileThemeDuration] = useState(0);
   const [profileThemeVolume, setProfileThemeVolume] = useState(0.34);
   const [profileThemeEmbedReloadToken, setProfileThemeEmbedReloadToken] = useState(0);
+  const [isSpotifyMiniPlayerVisible, setIsSpotifyMiniPlayerVisible] = useState(false);
   const [isProfileThemePanelOpen, setIsProfileThemePanelOpen] = useState(false);
   const [previousProfileId, setPreviousProfileId] = useState<number | null | undefined>(undefined);
   const [nextProfileId, setNextProfileId] = useState<number | null | undefined>(undefined);
@@ -2409,6 +2410,14 @@ useEffect(() => {
         ? `${profileThemeEmbedUrl}${profileThemeEmbedUrl.includes("?") ? "&" : "?"}autoplay=1&sakura_play=${profileThemeEmbedReloadToken}`
         : profileThemeEmbedUrl
       : null;
+  const isSpotifyThemeEmbed =
+    profileThemeUsesEmbeddedPlayer && profileThemeEmbedProvider === "spotify";
+  const shouldRenderHiddenThemeEmbed =
+    Boolean(profileThemeActiveEmbedUrl) && profileThemeEmbedProvider !== "spotify";
+  const profileThemeSpotifyMiniEmbedUrl =
+    isSpotifyThemeEmbed && profileThemeEmbedUrl
+      ? `${profileThemeEmbedUrl}${profileThemeEmbedUrl.includes("?") ? "&" : "?"}autoplay=1&sakura_mini=${profileThemeEmbedReloadToken || 0}`
+      : null;
   const profileThemeDisplayedDuration = profileThemeUsesEmbeddedPlayer
     ? profileThemeDuration > 0
       ? profileThemeDuration
@@ -2418,6 +2427,12 @@ useEffect(() => {
     profileThemeCurrentTime,
     profileThemeDisplayedDuration || profileThemeCurrentTime
   );
+  useEffect(() => {
+    if (!isSpotifyThemeEmbed || !shouldPlayProfileThemeSong) {
+      setIsSpotifyMiniPlayerVisible(false);
+    }
+  }, [isSpotifyThemeEmbed, profileThemeSongKey, shouldPlayProfileThemeSong]);
+
   useEffect(() => {
     const audio = profileThemeAudioRef.current;
 
@@ -5788,13 +5803,9 @@ useEffect(() => {
           const nextToken = Date.now();
           setProfileThemeCurrentTime(0);
           setProfileThemeEmbedReloadToken(nextToken);
-
-          const frame = profileThemeEmbedFrameRef.current;
-
-          if (frame && profileThemeEmbedUrl) {
-            const joiner = profileThemeEmbedUrl.includes("?") ? "&" : "?";
-            frame.src = `${profileThemeEmbedUrl}${joiner}autoplay=1&sakura_play=${nextToken}`;
-          }
+          setIsSpotifyMiniPlayerVisible(true);
+        } else {
+          setIsSpotifyMiniPlayerVisible(false);
         }
         return;
       }
@@ -5886,10 +5897,10 @@ useEffect(() => {
         aria-hidden="true"
         className="hidden"
       />
-      {profileThemeUsesEmbeddedPlayer && profileThemeActiveEmbedUrl ? (
+      {shouldRenderHiddenThemeEmbed ? (
         <iframe
           ref={profileThemeEmbedFrameRef}
-          src={profileThemeActiveEmbedUrl}
+          src={profileThemeActiveEmbedUrl ?? undefined}
           title={profileThemeTitle ?? "Profile Theme"}
           loading="lazy"
           tabIndex={-1}
@@ -6699,15 +6710,54 @@ useEffect(() => {
                       <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-gray-400">
                         Source: {profileThemeTitle ?? "External"}
                       </p>
-                      {profileThemeSourceUrl ? (
-                        <a
-                          href={profileThemeSourceUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="mt-2 inline-flex items-center rounded-full border border-[#3a2a31] bg-[#140d11] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-[#ffb7c5] transition hover:border-[#ffb7c5]/45 hover:text-white"
-                        >
-                          Open Source
-                        </a>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        {isSpotifyThemeEmbed ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsSpotifyMiniPlayerVisible((currentValue) => {
+                                const nextValue = !currentValue;
+
+                                if (nextValue) {
+                                  setProfileThemeEmbedReloadToken(Date.now());
+                                  setProfileThemeCurrentTime(0);
+                                  setProfileThemeIsPlaying(true);
+                                } else {
+                                  setProfileThemeIsPlaying(false);
+                                }
+
+                                return nextValue;
+                              });
+                            }}
+                            className="inline-flex items-center rounded-full border border-[#3a2a31] bg-[#140d11] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-[#ffb7c5] transition hover:border-[#ffb7c5]/45 hover:text-white"
+                          >
+                            {isSpotifyMiniPlayerVisible ? "Hide Spotify" : "Spotify Mini"}
+                          </button>
+                        ) : null}
+                        {profileThemeSourceUrl ? (
+                          <a
+                            href={profileThemeSourceUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center rounded-full border border-[#3a2a31] bg-[#140d11] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-[#ffb7c5] transition hover:border-[#ffb7c5]/45 hover:text-white"
+                          >
+                            Open Source
+                          </a>
+                        ) : null}
+                      </div>
+                      {isSpotifyThemeEmbed &&
+                      isSpotifyMiniPlayerVisible &&
+                      profileThemeSpotifyMiniEmbedUrl ? (
+                        <iframe
+                          ref={profileThemeEmbedFrameRef}
+                          src={profileThemeSpotifyMiniEmbedUrl}
+                          title={`${profileThemeTitle ?? "Spotify"} mini`}
+                          loading="lazy"
+                          referrerPolicy="strict-origin-when-cross-origin"
+                          allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                          style={{ height: Math.max(152, Math.min(profileThemeEmbedHeight, 352)) }}
+                          className="mt-2 w-full rounded-[14px] border-0 bg-black"
+                        />
                       ) : null}
                     </div>
                   ) : null}
