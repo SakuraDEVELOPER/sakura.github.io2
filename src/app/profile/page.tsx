@@ -454,29 +454,6 @@ const getAdminThemeSongInputValue = (value: string | null): string => {
     ? value.slice(PROFILE_THEME_EXTERNAL_URL_PREFIX.length)
     : value;
 };
-const buildProfileThemeEmbeddedPlaybackUrl = (embedUrl: string): string => {
-  try {
-    const parsedUrl = new URL(embedUrl);
-    const host = parsedUrl.hostname.toLowerCase().replace(/^www\./, "");
-
-    if (host === "youtube-nocookie.com" || host === "youtube.com" || host === "m.youtube.com") {
-      parsedUrl.searchParams.set("autoplay", "1");
-      parsedUrl.searchParams.set("rel", "0");
-    }
-
-    if (host === "w.soundcloud.com") {
-      parsedUrl.searchParams.set("auto_play", "true");
-    }
-
-    if (host === "open.spotify.com") {
-      parsedUrl.searchParams.set("autoplay", "1");
-    }
-
-    return parsedUrl.toString();
-  } catch {
-    return embedUrl;
-  }
-};
 const hasCurrentFirebaseAuthRuntime = (runtime: RuntimeWindow) =>
   Boolean(runtime.sakuraFirebaseAuth) &&
   runtime.sakuraFirebaseRuntimeVersion === FIREBASE_AUTH_RUNTIME_VERSION &&
@@ -1727,7 +1704,6 @@ export default function ProfilePage() {
   const [profileThemeCurrentTime, setProfileThemeCurrentTime] = useState(0);
   const [profileThemeDuration, setProfileThemeDuration] = useState(0);
   const [profileThemeVolume, setProfileThemeVolume] = useState(0.34);
-  const [profileThemeEmbeddedIsPlaying, setProfileThemeEmbeddedIsPlaying] = useState(true);
   const [isProfileThemePanelOpen, setIsProfileThemePanelOpen] = useState(false);
   const [previousProfileId, setPreviousProfileId] = useState<number | null | undefined>(undefined);
   const [nextProfileId, setNextProfileId] = useState<number | null | undefined>(undefined);
@@ -2402,6 +2378,8 @@ useEffect(() => {
   const profileThemeSelection = profileThemeStoredSelection ?? profileThemeDefaultSelection;
   const profileThemeSongSrc = profileThemeSelection?.src ?? null;
   const profileThemeEmbedUrl = profileThemeSelection?.embedUrl ?? null;
+  const profileThemeSourceUrl = profileThemeSelection?.sourceUrl ?? null;
+  const profileThemeEmbedHeight = profileThemeSelection?.embedHeight ?? 168;
   const profileThemeUsesEmbeddedPlayer = Boolean(profileThemeEmbedUrl);
   const profileThemeUsesNativeAudio = Boolean(profileThemeSongSrc);
   const profileThemeTitle = profileThemeSelection?.title ?? null;
@@ -2410,18 +2388,6 @@ useEffect(() => {
       ? `${profileThemeProfileId}:${profileThemeSelection.key}`
       : null;
   const shouldPlayProfileThemeSong = Boolean(profileThemeSongSrc || profileThemeEmbedUrl);
-  const profileThemeEmbeddedPlaybackUrl =
-    profileThemeUsesEmbeddedPlayer && profileThemeEmbeddedIsPlaying && profileThemeEmbedUrl
-      ? buildProfileThemeEmbeddedPlaybackUrl(profileThemeEmbedUrl)
-      : null;
-
-  useEffect(() => {
-    if (!profileThemeUsesEmbeddedPlayer) {
-      return;
-    }
-
-    setProfileThemeEmbeddedIsPlaying(true);
-  }, [profileThemeSongKey, profileThemeUsesEmbeddedPlayer]);
   useEffect(() => {
     const audio = profileThemeAudioRef.current;
 
@@ -2445,7 +2411,7 @@ useEffect(() => {
     if (!profileThemeUsesNativeAudio) {
       audio.pause();
       audio.currentTime = 0;
-      setProfileThemeIsPlaying(profileThemeEmbeddedIsPlaying);
+      setProfileThemeIsPlaying(false);
       setProfileThemeCurrentTime(0);
       setProfileThemeDuration(0);
       profileThemeAutoplayAttemptedRef.current = profileThemeSongKey;
@@ -2472,7 +2438,6 @@ useEffect(() => {
     profileThemeSongSrc,
     profileThemeUsesNativeAudio,
     profileThemeVolume,
-    profileThemeEmbeddedIsPlaying,
     shouldPlayProfileThemeSong,
   ]);
 
@@ -5416,7 +5381,6 @@ useEffect(() => {
 
   const handleProfileThemeToggle = async () => {
     if (profileThemeUsesEmbeddedPlayer) {
-      setProfileThemeEmbeddedIsPlaying((currentValue) => !currentValue);
       return;
     }
 
@@ -5493,18 +5457,6 @@ useEffect(() => {
         aria-hidden="true"
         className="hidden"
       />
-      {profileThemeEmbeddedPlaybackUrl ? (
-        <iframe
-          src={profileThemeEmbeddedPlaybackUrl}
-          title={profileThemeTitle ?? "Profile Theme"}
-          loading="lazy"
-          tabIndex={-1}
-          aria-hidden="true"
-          referrerPolicy="strict-origin-when-cross-origin"
-          allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-          className="pointer-events-none fixed left-0 top-0 h-0 w-0 opacity-0"
-        />
-      ) : null}
       <div className="mx-auto max-w-6xl">
         <div className="mb-8 flex flex-col gap-4">
           <div className="relative">
@@ -6299,6 +6251,30 @@ useEffect(() => {
                       {profileThemeIsPlaying ? "Playing" : "Paused"}
                     </span>
                   </div>
+                  {profileThemeUsesEmbeddedPlayer && profileThemeEmbedUrl ? (
+                    <div className="mt-4 overflow-hidden rounded-[20px] border border-[#2a181d] bg-[linear-gradient(180deg,rgba(18,11,14,0.96)_0%,rgba(11,11,12,0.96)_100%)] p-1.5 shadow-[inset_0_1px_0_rgba(255,183,197,0.04)]">
+                      <iframe
+                        src={profileThemeEmbedUrl}
+                        title={profileThemeTitle ?? "Profile Theme"}
+                        loading="lazy"
+                        referrerPolicy="strict-origin-when-cross-origin"
+                        allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                        allowFullScreen
+                        style={{ height: Math.min(profileThemeEmbedHeight, 168) }}
+                        className="w-full rounded-[16px] border-0 bg-black"
+                      />
+                      {profileThemeSourceUrl ? (
+                        <a
+                          href={profileThemeSourceUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-2 inline-flex items-center rounded-full border border-[#3a2a31] bg-[#140d11] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-[#ffb7c5] transition hover:border-[#ffb7c5]/45 hover:text-white"
+                        >
+                          Open Source
+                        </a>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <div className="mt-4 rounded-[20px] border border-[#2a181d] bg-[linear-gradient(180deg,rgba(18,11,14,0.96)_0%,rgba(11,11,12,0.96)_100%)] p-3 shadow-[inset_0_1px_0_rgba(255,183,197,0.04)]">
                     <div className="flex items-center gap-3">
                       <button
@@ -6307,6 +6283,7 @@ useEffect(() => {
                           void handleProfileThemeToggle();
                         }}
                         aria-label={profileThemeIsPlaying ? "Pause music" : "Play music"}
+                        disabled={profileThemeUsesEmbeddedPlayer}
                         className={`inline-flex h-10 min-w-10 shrink-0 items-center justify-center rounded-full border transition ${
                           profileThemeIsPlaying
                             ? "border-[#ffb7c5]/45 bg-[#ffb7c5] text-black shadow-[0_0_22px_rgba(255,183,197,0.22)] hover:bg-[#ffc8d3]"
@@ -6728,7 +6705,7 @@ useEffect(() => {
                           ))}
                         </datalist>
                         <p className="mt-2 text-xs leading-relaxed text-gray-500">
-                          YouTube, Spotify, SoundCloud URLs are supported now.
+                          YouTube, VK, Spotify, SoundCloud, Yandex Music URLs are supported.
                         </p>
                       </label>
                       <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -6859,3 +6836,4 @@ useEffect(() => {
     </main>
   );
 }
+
