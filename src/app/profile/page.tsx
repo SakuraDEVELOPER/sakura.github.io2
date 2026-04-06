@@ -372,7 +372,7 @@ const resolveExternalProfileThemeSongSelection = (
 
   if (host === "soundcloud.com" || host === "m.soundcloud.com" || host === "on.soundcloud.com") {
     const sourceUrl = `https://${host}${parsedUrl.pathname}${parsedUrl.search}`;
-    const embedUrl = `https://w.soundcloud.com/player/?url=${encodeURIComponent(sourceUrl)}&auto_play=true&hide_related=false&show_comments=false&show_user=true&show_reposts=false&visual=false`;
+    const embedUrl = `https://w.soundcloud.com/player/?url=${encodeURIComponent(sourceUrl)}&auto_play=true&hide_related=true&show_teaser=false&show_comments=false&show_user=true&show_reposts=false&visual=false`;
     return buildSelection("SoundCloud", sourceUrl, embedUrl, 166, "soundcloud");
   }
 
@@ -2387,6 +2387,10 @@ useEffect(() => {
   const profileThemeEmbedHeight = profileThemeSelection?.embedHeight ?? 168;
   const profileThemeEmbedProvider = profileThemeSelection?.embedProvider ?? null;
   const profileThemeUsesEmbeddedPlayer = Boolean(profileThemeEmbedUrl);
+  const profileThemeUsesFallbackEmbeddedTimeline =
+    profileThemeEmbedProvider !== "soundcloud" &&
+    profileThemeEmbedProvider !== "youtube" &&
+    profileThemeEmbedProvider !== "vk";
   const profileThemeUsesNativeAudio = Boolean(profileThemeSongSrc);
   const profileThemeTitle = profileThemeSelection?.title ?? null;
   const profileThemeSongKey =
@@ -2419,7 +2423,11 @@ useEffect(() => {
       audio.currentTime = 0;
       setProfileThemeIsPlaying(true);
       setProfileThemeCurrentTime(0);
-      setProfileThemeDuration(PROFILE_THEME_EMBED_FALLBACK_DURATION_SECONDS);
+      setProfileThemeDuration(
+        profileThemeUsesFallbackEmbeddedTimeline
+          ? PROFILE_THEME_EMBED_FALLBACK_DURATION_SECONDS
+          : 0
+      );
       profileThemeAutoplayAttemptedRef.current = profileThemeSongKey;
       return;
     }
@@ -2443,6 +2451,7 @@ useEffect(() => {
     profileThemeSongKey,
     profileThemeSongSrc,
     profileThemeUsesNativeAudio,
+    profileThemeUsesFallbackEmbeddedTimeline,
     shouldPlayProfileThemeSong,
   ]);
 
@@ -2525,12 +2534,221 @@ useEffect(() => {
     }
 
     setProfileThemeDuration((currentValue) =>
-      currentValue > 0 ? currentValue : PROFILE_THEME_EMBED_FALLBACK_DURATION_SECONDS
+      currentValue > 0
+        ? currentValue
+        : profileThemeUsesFallbackEmbeddedTimeline
+          ? PROFILE_THEME_EMBED_FALLBACK_DURATION_SECONDS
+          : 0
     );
-  }, [profileThemeSongKey, profileThemeUsesEmbeddedPlayer, shouldPlayProfileThemeSong]);
+  }, [
+    profileThemeSongKey,
+    profileThemeUsesEmbeddedPlayer,
+    profileThemeUsesFallbackEmbeddedTimeline,
+    shouldPlayProfileThemeSong,
+  ]);
 
   useEffect(() => {
-    if (!profileThemeUsesEmbeddedPlayer || !profileThemeIsPlaying) {
+    if (!profileThemeUsesEmbeddedPlayer || !profileThemeEmbedProvider) {
+      return;
+    }
+
+    const normalizeSeconds = (rawValue: unknown): number | null => {
+      if (typeof rawValue !== "number" || !Number.isFinite(rawValue) || rawValue < 0) {
+        return null;
+      }
+
+      return rawValue > PROFILE_THEME_EMBED_FALLBACK_DURATION_SECONDS * 4
+        ? rawValue / 1000
+        : rawValue;
+    };
+
+    const syncDuration = (rawValue: unknown) => {
+      const nextDuration = normalizeSeconds(rawValue);
+
+      if (!nextDuration || nextDuration <= 0) {
+        return;
+      }
+
+      setProfileThemeDuration((currentValue) =>
+        Math.abs(currentValue - nextDuration) >= PROFILE_THEME_TIMELINE_UPDATE_STEP_SECONDS
+          ? nextDuration
+          : currentValue
+      );
+    };
+
+    const syncCurrentTime = (rawValue: unknown) => {
+      const nextTime = normalizeSeconds(rawValue);
+
+      if (nextTime === null || nextTime < 0) {
+        return;
+      }
+
+      setProfileThemeCurrentTime((currentValue) =>
+        Math.abs(currentValue - nextTime) >= PROFILE_THEME_TIMELINE_UPDATE_STEP_SECONDS
+          ? nextTime
+          : currentValue
+      );
+    };
+
+    const handleEmbedMessage = (event: MessageEvent) => {
+      if (event.source !== profileThemeEmbedFrameRef.current?.contentWindow) {
+        return;
+      }
+
+      let payload: unknown = event.data;
+
+      if (typeof payload === "string") {
+        try {
+          payload = JSON.parse(payload);
+        } catch {
+          return;
+        }
+      }
+
+      if (!payload || typeof payload !== "object") {
+        return;
+      }
+
+      const message = payload as Record<string, unknown>;
+      const messageEventName =
+        typeof message.event === "string"
+          ? message.event.toLowerCase()
+          : typeof message.method === "string"
+            ? message.method.toLowerCase()
+            : "";
+      const info =
+        typeof message.info === "object" && message.info
+          ? (message.info as Record<string, unknown>)
+          : null;
+      const data =
+        typeof message.data === "object" && message.data
+          ? (message.data as Record<string, unknown>)
+          : null;
+      const value =
+        typeof message.value === "object" && message.value
+          ? (message.value as Record<string, unknown>)
+          : null;
+      const details = info ?? data ?? value;
+
+      if (profileThemeEmbedProvider === "youtube" || profileThemeEmbedProvider === "vk") {
+        const playbackState =
+          typeof message.info === "number"
+            ? message.info
+            : typeof message.data === "number"
+              ? message.data
+              : null;
+
+        if (messageEventName === "onstatechange") {
+          if (playbackState === 1) {
+            setProfileThemeIsPlaying(true);
+          } else if (playbackState === 2 || playbackState === 0) {
+            setProfileThemeIsPlaying(false);
+          }
+        }
+
+        syncDuration(details?.duration ?? message.duration);
+        syncCurrentTime(details?.currentTime ?? message.currentTime);
+        return;
+      }
+
+      if (profileThemeEmbedProvider === "soundcloud") {
+        if (messageEventName === "play") {
+          setProfileThemeIsPlaying(true);
+        } else if (messageEventName === "pause" || messageEventName === "finish") {
+          setProfileThemeIsPlaying(false);
+        }
+
+        const durationCandidate = details?.duration ?? message.duration;
+        const currentCandidate =
+          details?.currentPosition ??
+          details?.currentTime ??
+          details?.position ??
+          message.currentPosition ??
+          message.currentTime ??
+          message.position;
+
+        syncDuration(durationCandidate);
+        syncCurrentTime(currentCandidate);
+      }
+    };
+
+    window.addEventListener("message", handleEmbedMessage);
+
+    return () => {
+      window.removeEventListener("message", handleEmbedMessage);
+    };
+  }, [profileThemeEmbedProvider, profileThemeUsesEmbeddedPlayer]);
+
+  useEffect(() => {
+    if (!profileThemeUsesEmbeddedPlayer || !profileThemeEmbedProvider || !shouldPlayProfileThemeSong) {
+      return;
+    }
+
+    let attemptCount = 0;
+    const maxAttempts = 12;
+    const intervalId = window.setInterval(() => {
+      const frameWindow = profileThemeEmbedFrameRef.current?.contentWindow;
+
+      attemptCount += 1;
+
+      if (!frameWindow) {
+        if (attemptCount >= maxAttempts) {
+          window.clearInterval(intervalId);
+        }
+        return;
+      }
+
+      if (profileThemeEmbedProvider === "soundcloud") {
+        const soundCloudEvents = ["READY", "PLAY", "PAUSE", "FINISH", "PLAY_PROGRESS"];
+
+        for (const eventName of soundCloudEvents) {
+          frameWindow.postMessage(JSON.stringify({ method: "addEventListener", value: eventName }), "*");
+        }
+
+        frameWindow.postMessage(
+          JSON.stringify({ method: "setVolume", value: Math.round(profileThemeVolume * 100) }),
+          "*"
+        );
+        frameWindow.postMessage(JSON.stringify({ method: "play" }), "*");
+      } else if (profileThemeEmbedProvider === "youtube" || profileThemeEmbedProvider === "vk") {
+        const messageId = "profile-theme-player";
+
+        frameWindow.postMessage(JSON.stringify({ event: "listening", id: messageId }), "*");
+        frameWindow.postMessage(
+          JSON.stringify({
+            event: "command",
+            func: "setVolume",
+            args: [Math.round(profileThemeVolume * 100)],
+            id: messageId,
+          }),
+          "*"
+        );
+        frameWindow.postMessage(
+          JSON.stringify({ event: "command", func: "playVideo", args: [], id: messageId }),
+          "*"
+        );
+      }
+
+      window.clearInterval(intervalId);
+    }, 250);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [
+    profileThemeEmbedProvider,
+    profileThemeSongKey,
+    profileThemeUsesEmbeddedPlayer,
+    profileThemeVolume,
+    shouldPlayProfileThemeSong,
+  ]);
+
+  useEffect(() => {
+    if (
+      !profileThemeUsesEmbeddedPlayer ||
+      !profileThemeIsPlaying ||
+      !profileThemeUsesFallbackEmbeddedTimeline
+    ) {
       return;
     }
 
@@ -2548,7 +2766,12 @@ useEffect(() => {
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [profileThemeDuration, profileThemeIsPlaying, profileThemeUsesEmbeddedPlayer]);
+  }, [
+    profileThemeDuration,
+    profileThemeIsPlaying,
+    profileThemeUsesEmbeddedPlayer,
+    profileThemeUsesFallbackEmbeddedTimeline,
+  ]);
 
   const isActiveProfileOnline = isPresenceOnlineNow(activePresence);
   const hasUsername = Boolean(activeProfile?.login?.trim());
@@ -6935,6 +7158,7 @@ useEffect(() => {
     </main>
   );
 }
+
 
 
 
