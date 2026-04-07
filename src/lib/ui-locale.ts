@@ -1,10 +1,40 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 
 export type UiLocale = "en" | "ru";
 const UI_LOCALE_STORAGE_KEY = "sakura-ui-locale";
 const UI_LOCALE_CHANGE_EVENT = "sakura-ui-locale-change";
+const RU_MOJIBAKE_PATTERN = /(Ð|Ñ|Â|Ã|вЂ|в„|Р[\u00A0'’]|Р’|С™|С›|Џ)/;
+
+const looksLikeCorruptedRussian = (value: string) => RU_MOJIBAKE_PATTERN.test(value);
+
+const tryDecodeUtf8FromLatin1 = (value: string) => {
+  if (!value || !/[\u00C0-\u00FF]/.test(value)) {
+    return value;
+  }
+
+  try {
+    const bytes = Uint8Array.from(Array.from(value, (char) => char.charCodeAt(0) & 0xff));
+    return new TextDecoder("utf-8").decode(bytes);
+  } catch {
+    return value;
+  }
+};
+
+const resolveRussianText = (englishText: string, russianText: string) => {
+  if (!looksLikeCorruptedRussian(russianText)) {
+    return russianText;
+  }
+
+  const decodedText = tryDecodeUtf8FromLatin1(russianText);
+
+  if (!looksLikeCorruptedRussian(decodedText)) {
+    return decodedText;
+  }
+
+  return englishText;
+};
 
 const hasRussianLanguage = () => {
   if (typeof navigator === "undefined") {
@@ -45,8 +75,7 @@ const isWindowsPlatform = () => {
 export const detectUiLocale = (): UiLocale =>
   isWindowsPlatform() && hasRussianLanguage() ? "ru" : "en";
 
-export const translateByLocale = (locale: UiLocale, englishText: string, russianText: string) =>
-  locale === "ru" ? russianText : englishText;
+export const translateByLocale = (locale: UiLocale, englishText: string, russianText: string) =>`r`n  locale === "ru" ? resolveRussianText(englishText, russianText) : englishText;
 
 export const readPreferredUiLocale = (): UiLocale | null => {
   if (typeof window === "undefined") {
@@ -115,3 +144,4 @@ export const useLocaleText = () => {
 
   return { locale, t };
 };
+
