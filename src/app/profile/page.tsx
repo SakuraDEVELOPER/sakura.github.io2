@@ -744,6 +744,8 @@ const AVATAR_ACTION_TIMEOUT_MS = 12000;
 const COMMENT_SUCCESS_DISMISS_MS = 1200;
 const COMMENT_DELETE_SUCCESS_DISMISS_MS = 700;
 const COMMENT_ERROR_DISMISS_MS = 1600;
+const COMMENT_MEDIA_CHECK_TIMEOUT_MS = 6000;
+const COMMENT_MEDIA_CHECK_CACHE_TTL_MS = 2 * 60 * 1000;
 const withAvatarActionTimeout = <T,>(promise: Promise<T>) =>
   Promise.race<T>([
     promise,
@@ -839,6 +841,29 @@ const isRenderableCommentImageMediaType = (value: string | null | undefined) =>
   COMMENT_RENDERABLE_IMAGE_MEDIA_TYPES.has(value.trim().toLowerCase());
 const isRenderableCommentImagePath = (value: string | null | undefined) =>
   typeof value === "string" && /\.(jpe?g|png|webp)(?:$|[?#])/i.test(value.trim());
+const isCommentMediaImageOrVideoType = (value: string | null | undefined) => {
+  const normalizedValue = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return normalizedValue.startsWith("image/") || normalizedValue.startsWith("video/");
+};
+const isCommentMediaImageOrVideoPath = (value: string | null | undefined) =>
+  typeof value === "string" && /\.(jpe?g|png|webp|gif|mp4|webm)(?:$|[?#])/i.test(value.trim());
+const resolveCommentSupabaseMediaPath = (
+  comment: Pick<ProfileComment, "mediaPath" | "mediaURL">
+) => {
+  const mediaPath = typeof comment.mediaPath === "string" ? comment.mediaPath.trim() : "";
+
+  if (mediaPath) {
+    return mediaPath;
+  }
+
+  const mediaURL = typeof comment.mediaURL === "string" ? comment.mediaURL.trim() : "";
+  return resolveSupabasePublicObjectPath(mediaURL);
+};
+const isCommentPhotoOrVideoAttachment = (
+  comment: Pick<ProfileComment, "mediaType" | "mediaPath" | "mediaURL">
+) =>
+  isCommentMediaImageOrVideoType(comment.mediaType) ||
+  isCommentMediaImageOrVideoPath(resolveCommentSupabaseMediaPath(comment));
 const resolveCommentMediaDisplayUrl = (
   comment: Pick<ProfileComment, "mediaPath" | "mediaType" | "mediaURL">
 ) => {
@@ -1793,6 +1818,9 @@ export default function ProfilePage() {
   const prefetchingNeighborProfileIdsRef = useRef<Set<number>>(new Set());
   const prefetchedCommentAuthorProfileIdsRef = useRef<Set<number>>(new Set());
   const prefetchingCommentAuthorProfileIdsRef = useRef<Set<number>>(new Set());
+  const commentMediaExistenceCacheRef = useRef<Map<string, { exists: boolean; expiresAt: number }>>(new Map());
+  const staleCommentMediaCleanupInFlightRef = useRef<Set<string>>(new Set());
+  const staleCommentMediaCleanupAttemptedRef = useRef<Set<string>>(new Set());
   const currentUserIdentitySignature = currentUser
     ? `${currentUser.uid}:${currentUser.isAnonymous ? "1" : "0"}:${currentUser.profileId ?? ""}`
     : "guest";
@@ -1815,7 +1843,70 @@ export default function ProfilePage() {
     element.style.height = `${element.scrollHeight}px`;
   };
 
-useEffect(() => {
+  const checkCommentSupabaseMediaExists = useCallback(async (mediaPath: string) => {
+    if (!isSupabaseConfigured) {
+      return true;
+    }
+
+    const normalizedMediaPath = mediaPath.trim();
+
+    if (!normalizedMediaPath) {
+      return true;
+    }
+
+    const now = Date.now();
+    const cachedResult = commentMediaExistenceCacheRef.current.get(normalizedMediaPath);
+
+    if (cachedResult && cachedResult.expiresAt > now) {
+      return cachedResult.exists;
+    }
+
+    const mediaUrl = getSupabasePublicObjectUrl(normalizedMediaPath);
+
+    if (!mediaUrl) {
+      return true;
+    }
+
+    let exists = true;
+    const abortController = typeof AbortController === "function" ? new AbortController() : null;
+    const timeoutId = window.setTimeout(() => {
+      abortController?.abort();
+    }, COMMENT_MEDIA_CHECK_TIMEOUT_MS);
+
+    try {
+      const response = await fetch(mediaUrl, {
+        method: "HEAD",
+        cache: "no-store",
+        signal: abortController?.signal,
+      });
+
+      exists = response.status !== 404 && response.status !== 410;
+    } catch (error) {
+      if (
+        !(error instanceof DOMException && error.name === "AbortError") &&
+        !isNetworkFetchError(error)
+      ) {
+        console.error("Failed to validate comment media object:", error);
+      }
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
+
+    commentMediaExistenceCacheRef.current.set(normalizedMediaPath, {
+      exists,
+      expiresAt: now + COMMENT_MEDIA_CHECK_CACHE_TTL_MS,
+    });
+
+    return exists;
+  }, []);
+
+  useEffect(() => {
+    staleCommentMediaCleanupAttemptedRef.current.clear();
+    staleCommentMediaCleanupInFlightRef.current.clear();
+    commentMediaExistenceCacheRef.current.clear();
+  }, [profile?.profileId]);
+
+  useEffect(() => {
     if (!isHeaderProfileSearchOpen) {
       return;
     }
@@ -4236,6 +4327,120 @@ useEffect(() => {
       isCancelled = true;
     };
   }, [activeProfile?.profileId, authReady, authStateSettled, authError]);
+
+  useEffect(() => {
+    if (!authReady || !authStateSettled || authError || !activeProfile?.profileId || !comments.length) {
+      return;
+    }
+
+    const bridge = getWindowState().sakuraFirebaseAuth;
+
+    if (!bridge) {
+      return;
+    }
+
+    const cleanupTargets = comments.filter((comment) => {
+      if (comment.pending === true || editingCommentId === comment.id) {
+        return false;
+      }
+
+      if (
+        staleCommentMediaCleanupAttemptedRef.current.has(comment.id) ||
+        staleCommentMediaCleanupInFlightRef.current.has(comment.id)
+      ) {
+        return false;
+      }
+
+      return Boolean(resolveCommentSupabaseMediaPath(comment)) && isCommentPhotoOrVideoAttachment(comment);
+    });
+
+    if (!cleanupTargets.length) {
+      return;
+    }
+
+    let isCancelled = false;
+
+    void (async () => {
+      for (const targetComment of cleanupTargets) {
+        if (isCancelled) {
+          return;
+        }
+
+        const mediaPath = resolveCommentSupabaseMediaPath(targetComment);
+
+        if (!mediaPath) {
+          continue;
+        }
+
+        const mediaExists = await checkCommentSupabaseMediaExists(mediaPath);
+
+        if (isCancelled || mediaExists) {
+          continue;
+        }
+
+        staleCommentMediaCleanupAttemptedRef.current.add(targetComment.id);
+        staleCommentMediaCleanupInFlightRef.current.add(targetComment.id);
+
+        try {
+          const normalizedMessage =
+            typeof targetComment.message === "string" ? targetComment.message.trim() : "";
+
+          if (!normalizedMessage) {
+            const deletedCommentId = await bridge.deleteProfileComment(targetComment.id);
+            const resolvedCommentId = deletedCommentId ?? targetComment.id;
+
+            if (!isCancelled) {
+              setComments((currentComments) =>
+                currentComments.filter((comment) => comment.id !== resolvedCommentId)
+              );
+            }
+
+            continue;
+          }
+
+          const updatedComment = await bridge.updateProfileComment(
+            targetComment.id,
+            targetComment.message,
+            null,
+            true
+          );
+
+          if (isCancelled) {
+            return;
+          }
+
+          if (!updatedComment) {
+            setComments((currentComments) =>
+              currentComments.filter((comment) => comment.id !== targetComment.id)
+            );
+            continue;
+          }
+
+          setComments((currentComments) =>
+            currentComments.map((comment) =>
+              comment.id === updatedComment.id ? updatedComment : comment
+            )
+          );
+        } catch (error) {
+          console.error("Failed to cleanup missing comment media from database:", error);
+        } finally {
+          staleCommentMediaCleanupInFlightRef.current.delete(targetComment.id);
+        }
+      }
+    })();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [
+    activeProfile?.profileId,
+    authReady,
+    authStateSettled,
+    authError,
+    comments,
+    editingCommentId,
+    checkCommentSupabaseMediaExists,
+  ]);
 
   useEffect(() => {
     if (!comments.length) {
@@ -7606,14 +7811,4 @@ useEffect(() => {
     </main>
   );
 }
-
-
-
-
-
-
-
-
-
-
 
