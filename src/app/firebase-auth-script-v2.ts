@@ -154,6 +154,35 @@ const firebaseModuleScript = `
         ? details.bannedAt
         : null
       : fallbackBannedAt ?? null;
+  const resolveHwid = (details, fallbackHwid = null) => {
+    const hwidValue = hasOwn(details, "hwid") ? details.hwid : fallbackHwid;
+
+    return typeof hwidValue === "string" && hwidValue.trim()
+      ? hwidValue.trim()
+      : null;
+  };
+  const normalizeSubscriptionUntil = (value) => {
+    if (typeof value !== "string" || !value.trim()) {
+      return null;
+    }
+
+    const parsedDate = new Date(value.trim());
+
+    if (Number.isNaN(parsedDate.getTime())) {
+      return null;
+    }
+
+    return parsedDate.toISOString();
+  };
+  const resolveSubscriptionUntil = (details, fallbackSubscriptionUntil = null) => {
+    const candidateValue = hasOwn(details, "subscriptionUntil")
+      ? details.subscriptionUntil
+      : hasOwn(details, "subscription_until")
+        ? details.subscription_until
+        : fallbackSubscriptionUntil;
+
+    return normalizeSubscriptionUntil(candidateValue);
+  };
   const hasProfileAvatarData = (snapshot) =>
     Boolean(
       snapshot &&
@@ -1427,6 +1456,9 @@ const firebaseModuleScript = `
         roles: ["user"],
         isBanned: false,
         bannedAt: null,
+        hwid: null,
+        subscriptionUntil: null,
+        subscription_until: null,
         loginHistory: buildLoginHistory(
           [],
         user.metadata.creationTime ?? null,
@@ -1449,6 +1481,8 @@ const firebaseModuleScript = `
     avatarType: resolveAvatarType(details, null),
     avatarSize: resolveAvatarSize(details, null),
     themeSongKey: resolveThemeSongKey(details, null),
+    hwid: resolveHwid(details, null),
+    subscriptionUntil: resolveSubscriptionUntil(details, null),
     providerIds: Array.isArray(details.providerIds) ? details.providerIds : getProviderIds(user),
     roles: normalizeRoles(details.roles),
     isBanned: details.isBanned === true,
@@ -1480,6 +1514,8 @@ const firebaseModuleScript = `
           avatarType: resolveAvatarType(details, null),
           avatarSize: resolveAvatarSize(details, null),
           themeSongKey: resolveThemeSongKey(details, null),
+          hwid: resolveHwid(details, null),
+          subscriptionUntil: resolveSubscriptionUntil(details, null),
           roles: normalizeRoles(details.roles),
           isBanned: details.isBanned === true,
           bannedAt: resolveBannedAt(details),
@@ -1517,6 +1553,8 @@ const firebaseModuleScript = `
     avatarType: resolveAvatarType(details, null),
     avatarSize: resolveAvatarSize(details, null),
     themeSongKey: resolveThemeSongKey(details, null),
+    hwid: resolveHwid(details, null),
+    subscriptionUntil: resolveSubscriptionUntil(details, null),
     roles: normalizeRoles(details.roles),
     isBanned: details.isBanned === true,
     bannedAt: resolveBannedAt(details),
@@ -1598,6 +1636,8 @@ const firebaseModuleScript = `
     "avatar_path",
     "avatar_type",
     "avatar_size",
+    "hwid",
+    "subscription_until",
     "roles",
     "is_banned",
     "banned_at",
@@ -1730,6 +1770,15 @@ const firebaseModuleScript = `
         avatarPath: sanitizeSupabaseProfileSyncText(snapshot?.avatarPath, 1024),
         avatarType: sanitizeSupabaseProfileSyncText(snapshot?.avatarType, 64),
         avatarSize: normalizeSupabaseProfileSyncInteger(snapshot?.avatarSize),
+        hwid: sanitizeSupabaseProfileSyncText(snapshot?.hwid, 512),
+        subscriptionUntil: sanitizeSupabaseProfileSyncText(
+          resolveSubscriptionUntil(snapshot, null),
+          64
+        ),
+        subscription_until: sanitizeSupabaseProfileSyncText(
+          resolveSubscriptionUntil(snapshot, null),
+          64
+        ),
         roles: Array.isArray(snapshot?.roles)
           ? snapshot.roles.filter((role) => typeof role === "string")
           : [],
@@ -1928,6 +1977,9 @@ const firebaseModuleScript = `
             ? row.avatar_type
             : null,
         avatarSize: normalizeSupabaseInteger(row?.avatar_size),
+        hwid: typeof row?.hwid === "string" ? row.hwid : null,
+        subscriptionUntil:
+          typeof row?.subscription_until === "string" ? row.subscription_until : null,
         roles: Array.isArray(row?.roles) ? row.roles : [],
         isBanned: row?.is_banned === true,
         bannedAt:
@@ -2707,6 +2759,9 @@ const firebaseModuleScript = `
           user.email?.split("@")[0] ??
           "Sakura User",
         photoURL: resolvePhotoURL(existingData, null),
+        hwid: resolveHwid(existingData, null),
+        subscriptionUntil: resolveSubscriptionUntil(existingData, null),
+        subscription_until: resolveSubscriptionUntil(existingData, null),
         roles,
         isBanned: existingData?.isBanned === true,
         bannedAt: resolveBannedAt(existingData),
@@ -2826,6 +2881,15 @@ const firebaseModuleScript = `
             ? finalData.displayName
             : profilePayload.displayName,
         roles: normalizeRoles(finalData?.roles ?? roles),
+        hwid: resolveHwid(finalData, profilePayload.hwid),
+        subscriptionUntil: resolveSubscriptionUntil(
+          finalData,
+          profilePayload.subscriptionUntil
+        ),
+        subscription_until: resolveSubscriptionUntil(
+          finalData,
+          profilePayload.subscriptionUntil
+        ),
         providerIds: Array.isArray(finalData?.providerIds) ? finalData.providerIds : providerIds,
         loginHistory: Array.isArray(finalData?.loginHistory) ? finalData.loginHistory : loginHistory,
         visitHistory: normalizeVisitHistory(finalData?.visitHistory ?? visitHistory),
@@ -4415,6 +4479,104 @@ const firebaseModuleScript = `
         themeSongKey: normalizedThemeSongKey,
       });
     };
+    const adminUpdateProfileSubscriptionUntil = async (profileId, nextSubscriptionUntil) => {
+      const { actorSnapshot } = await ensureRootActorSnapshot();
+
+      if (!Number.isInteger(profileId) || profileId <= 0) {
+        throw createFirebaseError("profile/invalid-id", "Profile id must be a positive number.");
+      }
+
+      const targetDoc = await findUserByProfileId(profileId);
+
+      if (!targetDoc) {
+        return null;
+      }
+
+      ensureActorCanManageTargetProfile(actorSnapshot?.roles ?? [], targetDoc.data()?.roles ?? []);
+
+      const normalizedSubscriptionUntil = resolveSubscriptionUntil(
+        { subscriptionUntil: nextSubscriptionUntil },
+        null
+      );
+
+      if (
+        typeof nextSubscriptionUntil === "string" &&
+        nextSubscriptionUntil.trim() &&
+        !normalizedSubscriptionUntil
+      ) {
+        throw createFirebaseError(
+          "profile/invalid-subscription-until",
+          "Enter a valid subscription end date."
+        );
+      }
+
+      try {
+        await setDoc(
+          userRefFor(targetDoc.id),
+          {
+            subscriptionUntil: normalizedSubscriptionUntil,
+            subscription_until: normalizedSubscriptionUntil,
+            updatedAt: new Date().toISOString(),
+          },
+          { merge: true }
+        );
+      } catch (error) {
+        if (!isPermissionDeniedError(error)) {
+          throw error;
+        }
+
+        throw createFirebaseError(
+          "profile/subscription-until-persist-failed",
+          "Subscription end date could not be saved. Check Firestore rules for privileged users."
+        );
+      }
+
+      return refreshStoredUserSnapshot(targetDoc.id, {
+        ...targetDoc.data(),
+        subscriptionUntil: normalizedSubscriptionUntil,
+        subscription_until: normalizedSubscriptionUntil,
+      });
+    };
+    const adminResetProfileHwid = async (profileId) => {
+      const { actorSnapshot } = await ensureRootActorSnapshot();
+
+      if (!Number.isInteger(profileId) || profileId <= 0) {
+        throw createFirebaseError("profile/invalid-id", "Profile id must be a positive number.");
+      }
+
+      const targetDoc = await findUserByProfileId(profileId);
+
+      if (!targetDoc) {
+        return null;
+      }
+
+      ensureActorCanManageTargetProfile(actorSnapshot?.roles ?? [], targetDoc.data()?.roles ?? []);
+
+      try {
+        await setDoc(
+          userRefFor(targetDoc.id),
+          {
+            hwid: null,
+            updatedAt: new Date().toISOString(),
+          },
+          { merge: true }
+        );
+      } catch (error) {
+        if (!isPermissionDeniedError(error)) {
+          throw error;
+        }
+
+        throw createFirebaseError(
+          "profile/hwid-reset-failed",
+          "HWID could not be reset. Check Firestore rules for privileged users."
+        );
+      }
+
+      return refreshStoredUserSnapshot(targetDoc.id, {
+        ...targetDoc.data(),
+        hwid: null,
+      });
+    };
     const adminUpdateProfileAvatar = async (profileId, file) => {
       const { actorSnapshot } = await ensureRootActorSnapshot();
 
@@ -4982,6 +5144,8 @@ const firebaseModuleScript = `
       adminUpdateProfileDisplayName,
       adminUpdateProfileLogin,
       adminUpdateProfileThemeSong,
+      adminUpdateProfileSubscriptionUntil,
+      adminResetProfileHwid,
       adminSetProfileBan,
       adminSetProfileEmailVerification,
       getProfileById,
