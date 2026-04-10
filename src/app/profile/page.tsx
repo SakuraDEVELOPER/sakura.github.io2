@@ -5348,6 +5348,90 @@ export default function ProfilePage() {
     }
   };
 
+  const handleAdminRevokeActiveSubscription = async () => {
+    const bridge = getWindowState().sakuraFirebaseAuth;
+
+    if (!bridge || !activeProfile?.profileId || !canManageRoleAssignments) {
+      return;
+    }
+
+    setAdminSubscriptionError(null);
+    setAdminSubscriptionSuccess(null);
+    setIsAdminSubscriptionSaving(true);
+
+    try {
+      const nextRoles = normalizeRoleSelection(
+        (activeProfile.roles ?? []).filter(
+          (role) => normalizeRoleName(role) !== "subscriber"
+        )
+      );
+      const snapshot = await bridge.updateProfileRoles(activeProfile.profileId, nextRoles);
+
+      if (snapshot) {
+        applyUpdatedProfileSnapshot(snapshot);
+        setProfile(snapshot);
+        if (visibleCurrentUser?.uid === snapshot.uid) {
+          setCurrentUser(snapshot);
+        }
+        setDraftRoles(normalizeRoleSelection(snapshot.roles));
+      } else {
+        setDraftRoles(nextRoles);
+      }
+
+      setAdminSubscriptionSuccess(
+        t("Active subscription revoked.", "Active subscription revoked.")
+      );
+    } catch (error) {
+      setAdminSubscriptionError(
+        error instanceof Error ? error.message : "Could not revoke active subscription."
+      );
+    } finally {
+      setIsAdminSubscriptionSaving(false);
+    }
+  };
+
+  const handleAdminRevokeLifetimeSubscription = async () => {
+    const bridge = getWindowState().sakuraFirebaseAuth;
+
+    if (!bridge || !activeProfile?.profileId || !canManageRoleAssignments) {
+      return;
+    }
+
+    setAdminSubscriptionError(null);
+    setAdminSubscriptionSuccess(null);
+    setIsAdminSubscriptionSaving(true);
+
+    try {
+      const nextRoles = normalizeRoleSelection(
+        (activeProfile.roles ?? []).filter(
+          (role) => normalizeRoleName(role) !== "lifetime"
+        )
+      );
+      const snapshot = await bridge.updateProfileRoles(activeProfile.profileId, nextRoles);
+
+      if (snapshot) {
+        applyUpdatedProfileSnapshot(snapshot);
+        setProfile(snapshot);
+        if (visibleCurrentUser?.uid === snapshot.uid) {
+          setCurrentUser(snapshot);
+        }
+        setDraftRoles(normalizeRoleSelection(snapshot.roles));
+      } else {
+        setDraftRoles(nextRoles);
+      }
+
+      setAdminSubscriptionSuccess(
+        t("Lifetime subscription revoked.", "Lifetime subscription revoked.")
+      );
+    } catch (error) {
+      setAdminSubscriptionError(
+        error instanceof Error ? error.message : "Could not revoke lifetime subscription."
+      );
+    } finally {
+      setIsAdminSubscriptionSaving(false);
+    }
+  };
+
   const handleAdminSubscriptionUntilSave = async () => {
     const bridge = getWindowState().sakuraFirebaseAuth;
 
@@ -7505,6 +7589,26 @@ export default function ProfilePage() {
                           {isAdminSubscriptionSaving
                             ? t("Saving...", "Saving...")
                             : t("Grant Lifetime Subscription", "Grant Lifetime Subscription")}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleAdminRevokeActiveSubscription}
+                          disabled={isAdminSubscriptionSaving || isRolesSaving || !hasSubscriberRole}
+                          className="inline-flex items-center justify-center rounded-full border border-[#3a2a31] bg-[#140d11] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-[#ffb7c5] transition hover:border-[#ffb7c5]/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {isAdminSubscriptionSaving
+                            ? t("Saving...", "Saving...")
+                            : t("Revoke Active Subscription", "Revoke Active Subscription")}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleAdminRevokeLifetimeSubscription}
+                          disabled={isAdminSubscriptionSaving || isRolesSaving || !hasLifetimeRole}
+                          className="inline-flex items-center justify-center rounded-full border border-[#3a2a31] bg-[#140d11] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-[#ffb7c5] transition hover:border-[#ffb7c5]/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {isAdminSubscriptionSaving
+                            ? t("Saving...", "Saving...")
+                            : t("Revoke Lifetime Subscription", "Revoke Lifetime Subscription")}
                         </button>
                       </div>
                       {hasSubscriberRole ? (
