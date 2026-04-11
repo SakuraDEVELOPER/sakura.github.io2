@@ -1019,6 +1019,7 @@ const parseDateTimeLocalInputValue = (value: string): string | null => {
 
   return parsedDate.toISOString();
 };
+const LIFETIME_SUBSCRIPTION_UNTIL_INPUT_VALUE = "3000-01-01T01:01";
 const resolveProfileHwid = (profile: UserProfile | null | undefined) => {
   const value = typeof profile?.hwid === "string" ? profile.hwid.trim() : "";
   return value || null;
@@ -5238,20 +5239,46 @@ export default function ProfilePage() {
       return;
     }
 
+    const shouldSetLifetimeSubscriptionUntil = normalizedDraftRoles.some(
+      (role) => normalizeRoleName(role) === "lifetime"
+    );
+    const lifetimeSubscriptionUntil = parseDateTimeLocalInputValue(
+      LIFETIME_SUBSCRIPTION_UNTIL_INPUT_VALUE
+    );
+
     setRolesError(null);
     setRolesSuccess(null);
     setIsRolesSaving(true);
 
     try {
-      const snapshot = await bridge.updateProfileRoles(
+      let nextSnapshot = await bridge.updateProfileRoles(
         activeProfile.profileId,
         normalizedDraftRoles
       );
 
-      if (snapshot) {
-        setProfile(snapshot);
-        if (visibleCurrentUser?.uid === snapshot.uid) {
-          setCurrentUser(snapshot);
+      if (
+        shouldSetLifetimeSubscriptionUntil &&
+        lifetimeSubscriptionUntil &&
+        typeof bridge.adminUpdateProfileSubscriptionUntil === "function"
+      ) {
+        const subscriptionSnapshot = await bridge.adminUpdateProfileSubscriptionUntil(
+          activeProfile.profileId,
+          lifetimeSubscriptionUntil
+        );
+
+        if (subscriptionSnapshot) {
+          nextSnapshot = subscriptionSnapshot;
+        }
+
+        setAdminSubscriptionUntilInput(LIFETIME_SUBSCRIPTION_UNTIL_INPUT_VALUE);
+        setAdminSubscriptionUntilError(null);
+        setAdminSubscriptionUntilSuccess(null);
+      }
+
+      if (nextSnapshot) {
+        setProfile(nextSnapshot);
+        if (visibleCurrentUser?.uid === nextSnapshot.uid) {
+          setCurrentUser(nextSnapshot);
         }
       }
 
@@ -5313,11 +5340,14 @@ export default function ProfilePage() {
       return;
     }
 
+    const lifetimeSubscriptionUntil = parseDateTimeLocalInputValue(
+      LIFETIME_SUBSCRIPTION_UNTIL_INPUT_VALUE
+    );
+
     setAdminSubscriptionError(null);
-      setAdminSubscriptionUntilInput("");
-      setAdminSubscriptionUntilError(null);
-      setAdminSubscriptionUntilSuccess(null);
     setAdminSubscriptionSuccess(null);
+    setAdminSubscriptionUntilError(null);
+    setAdminSubscriptionUntilSuccess(null);
     setIsAdminSubscriptionSaving(true);
 
     try {
@@ -5328,19 +5358,35 @@ export default function ProfilePage() {
         }),
         "lifetime",
       ]);
-      const snapshot = await bridge.updateProfileRoles(activeProfile.profileId, nextRoles);
 
-      if (snapshot) {
-        applyUpdatedProfileSnapshot(snapshot);
-        setProfile(snapshot);
-        if (visibleCurrentUser?.uid === snapshot.uid) {
-          setCurrentUser(snapshot);
+      let nextSnapshot = await bridge.updateProfileRoles(activeProfile.profileId, nextRoles);
+
+      if (
+        lifetimeSubscriptionUntil &&
+        typeof bridge.adminUpdateProfileSubscriptionUntil === "function"
+      ) {
+        const subscriptionSnapshot = await bridge.adminUpdateProfileSubscriptionUntil(
+          activeProfile.profileId,
+          lifetimeSubscriptionUntil
+        );
+
+        if (subscriptionSnapshot) {
+          nextSnapshot = subscriptionSnapshot;
         }
-        setDraftRoles(normalizeRoleSelection(snapshot.roles));
+      }
+
+      if (nextSnapshot) {
+        applyUpdatedProfileSnapshot(nextSnapshot);
+        setProfile(nextSnapshot);
+        if (visibleCurrentUser?.uid === nextSnapshot.uid) {
+          setCurrentUser(nextSnapshot);
+        }
+        setDraftRoles(normalizeRoleSelection(nextSnapshot.roles));
       } else {
         setDraftRoles(nextRoles);
       }
 
+      setAdminSubscriptionUntilInput(LIFETIME_SUBSCRIPTION_UNTIL_INPUT_VALUE);
       setAdminSubscriptionSuccess(
         t("Lifetime subscription granted.", "Lifetime subscription granted.")
       );
